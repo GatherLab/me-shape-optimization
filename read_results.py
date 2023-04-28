@@ -34,9 +34,13 @@ learning_rate = 2 * 1e-10
 grad_step = 100e-6
 no_optimization_steps = 50
 
+# Target frequency and number of eigenstates to compute (for solver)
+target_frequency = 100000
+no_eigenstates = 10
+
 # File to read data from
-folder_path = "./simulated_annealing3/"
-file = "features.csv"
+folder_path = "./img/particle_swarm/particle-swarm50/"
+file = "features_p1.csv"
 
 
 # --------------------
@@ -47,18 +51,22 @@ number_features = 24
 resonances_and_features = cf.read_features(folder_path + file, number_features)
 
 # Select a feature and generate geometry from it
-selected_feature = -1
+selected_feature = 1
 
 geometry = Geometry(Lmax, Bmax, Hmax, grid_size, accuracy, Bmin)
 geometry.adjust_horizontal_length(
     resonances_and_features.iloc[selected_feature].to_numpy()[1:]
 )
 geometry.generate_mesh()
+eigenfrequency, magnitude = cf.do_simulation(
+    geometry.mesh, E, nu, rho, target_frequency, no_eigenstates
+)
 cf.plot_shape(
     geometry.mesh,
     resonances_and_features.iloc[selected_feature]["eigenfrequency"],
     folder_path,
     Lmax,
+    magnitude,
     save=False,
 )
 
@@ -66,29 +74,16 @@ cf.plot_shape(
 # Generate gif
 # --------------------
 
-cf.generate_gif(folder_path, resonances_and_features["eigenfrequency"].to_numpy())
-
-# Init geometry
-geometry.init_rectangular_geometry(Binit)
-
-filenames = []
-for index, row in resonances_and_features.iterrows():
-    # Adjust geometry
-    horizontal_lengths = row.to_numpy()[1:]
-    geometry.adjust_horizontal_length(horizontal_lengths)
-    geometry.generate_mesh()
-
-
-# --------------------
-# Initialise Geometry
-# --------------------
+# cf.generate_gif(folder_path, resonances_and_features["eigenfrequency"].to_numpy())
 
 
 # --------------------
 # Do simulations and Save Stress Data
 # --------------------
+"""
 for row in resonances_and_features.rows:
     # Generate geometry from saved features
 
     initial_eigenfrequency = cf.do_simulation(geometry.mesh, E, nu, rho)
     #! Find a way of nicely saving the MA data from the simulation (maybe just adding another variable?) !
+"""
