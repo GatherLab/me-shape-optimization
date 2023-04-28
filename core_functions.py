@@ -45,8 +45,13 @@ def do_simulation(mesh, E, nu, rho, target_frequency, no_eigenstates):
 
     # Solve for eigenstates/values and save to file
     eigensolver = linear_elasticity.init_eigensolver(target_frequency)
-    eigenfrequency = linear_elasticity.solve_eigenstates(eigensolver, no_eigenstates)
-    return eigenfrequency
+    eigenfrequency, eigenmode = linear_elasticity.solve_eigenstates(
+        eigensolver, no_eigenstates
+    )
+
+    x, y, z, magnitudes = linear_elasticity.extract_coordinates(eigenmode)
+
+    return eigenfrequency, x, y, magnitudes
 
 
 # Save the generated geometry together with its resonance frequency for
@@ -66,7 +71,7 @@ def plot_shape(mesh, eigenfrequency, folder, L, save=True):
     plt.clf()
 
     # 2D plot is enough for this case since the height cannot be varied
-    plt.scatter(y, x, marker="_")
+    plt.scatter(x, y, marker="_")
     plt.text(
         0.25 * L,
         0.9 * L,
@@ -83,6 +88,46 @@ def plot_shape(mesh, eigenfrequency, folder, L, save=True):
             folder + "shape_{0:.0f}_Hz.png".format(round(eigenfrequency, 0)),
             bbox_inches="tight",
         )
+        plt.close()
+    else:
+        plt.show()
+
+
+# Save the generated geometry together with its resonance frequency for
+# later reference
+def plot_shape_with_resonance(x, y, magnitude, eigenfrequency, folder, L, save=True):
+    """
+    Function to bundles the saving of the data (as a picture with the resonance
+    frequency in its name and a text file containing the features.)
+    """
+    # The built-in plot function of fenics doesn't work well. Here is a custom
+    # solution using matplotlib
+
+    plt.clf()
+
+    # 2D plot is enough for this case since the height cannot be varied
+    sc = plt.scatter(x, y, c=magnitude)
+    plt.text(
+        0.7 * L,
+        0.35 * L,
+        str(eigenfrequency) + " Hz",
+        fontsize=12,
+        color="red",
+    )
+    plt.xlim([0, L])
+    plt.ylim([-L / 2, L / 2])
+    ax = plt.gca()
+    fig = plt.gcf()
+    ax.set_aspect("equal", adjustable="box")
+    fig.colorbar(sc)
+
+    # If the user doesn't want to save, just show the image
+    if save:
+        plt.savefig(
+            folder + "shape_{0:.0f}_Hz.png".format(round(eigenfrequency, 0)),
+            bbox_inches="tight",
+        )
+        plt.close()
     else:
         plt.show()
 

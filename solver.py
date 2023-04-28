@@ -79,11 +79,12 @@ class LinearElasticity:
         eigensolver.parameters["spectral_shift"] = target_frequency**2 * 2 * fe.pi
         return eigensolver
 
-    def determine_relevant_mode(self, eigenmode):
+    def determine_relevant_mode(self, eigenmode, eigenfrequency):
         """
         Function to evaluate which of the calculated modes is the most relevant
         """
 
+        """
         # This section is to plot the modes and estimate which one is
         # the one I am interested in
         vector_field = np.reshape(
@@ -95,26 +96,40 @@ class LinearElasticity:
         # Get running average of the magnitude
         N = 5000
         averaged_magnitude = np.convolve(mag, np.ones(N) / N, mode="valid")
-        # Now I only have to somehow assess the shape of the mode
-        # plt.plot(averaged_magnitude, label=str(df.loc[i, "eigenfrequency"]))
+        """
+
+        # Transform simulation to readable data
+        x, y, z, mode_magnitude = self.extract_coordinates(eigenmode)
+
+        # Construct dataframe from it for easier handling
+        df = pd.DataFrame({"x": x, "y": y, "mag": mode_magnitude})
+
+        # Get only data along the centering line (y=0)
+        x_center_line = df.loc[np.isclose(y, 0, atol=1e-4)].x.to_numpy()
+        magnitude_center_line = df.loc[np.isclose(y, 0, atol=1e-4)].mag.to_numpy()
+
+        # plt.plot(x_center_line, magnitude_center_line)
+
+        # Fit the data with a quadratic curve fit
         popt, pcov = curve_fit(
             func,
-            np.arange(0, np.size(averaged_magnitude), 1),
-            averaged_magnitude,
+            x_center_line,
+            magnitude_center_line,
             bounds=(
-                [0, 0.4 * np.size(averaged_magnitude), 0],
-                [np.inf, 0.6 * np.size(averaged_magnitude), np.inf],
+                [0, 0.4 * np.max(x_center_line), 0],
+                [np.inf, 0.6 * np.max(x_center_line), np.inf],
             ),
         )
-        # plt.plot(
-        #     func(np.arange(0, np.size(averaged_magnitude), 1), *popt), "--"
-        # )
 
-        residuals = averaged_magnitude - func(
-            np.arange(0, np.size(averaged_magnitude), 1), *popt
-        )
+        # Plotting of the relevant eigenmodes
+        plt.plot(x_center_line, magnitude_center_line, label=str(eigenfrequency))
+        plt.plot(x_center_line, func(x_center_line, *popt), "--")
+        # plt.show()
+
+        # Determine quality of the fit
+        residuals = magnitude_center_line - func(x_center_line, *popt)
         ss_res = np.sum(residuals**2)
-        ss_tot = np.sum((averaged_magnitude - np.mean(averaged_magnitude)) ** 2)
+        ss_tot = np.sum((magnitude_center_line - np.mean(magnitude_center_line)) ** 2)
         r_squared = 1 - (ss_res / ss_tot)
 
         return r_squared
@@ -132,9 +147,7 @@ class LinearElasticity:
         # file_results.parameters["functions_share_mesh"] = True
 
         eigenmodes = []
-        df = pd.DataFrame(
-            columns=["eigenmode", "eigenfrequency", "norm", "maximum", "r_squared"]
-        )
+        df = pd.DataFrame(columns=["eigenfrequency", "norm", "maximum", "r_squared"])
 
         # Eigenfrequencies
         for i in range(0, N_eig):
@@ -146,12 +159,16 @@ class LinearElasticity:
             r, c, rx, cx = eigensolver.get_eigenpair(i)
 
             # Calculation of eigenfrequency from real part of eigenvalue
-            df.loc[i, "eigenfrequency"] = fe.sqrt(r) / 2 / fe.pi
+            eigenfrequency = fe.sqrt(r) / 2 / fe.pi
+            df.loc[i, "eigenfrequency"] = eigenfrequency
             # Initialize function and assign eigenvector
             # eigenmode = fe.Function(V, name="Eigenvector " + str(i))
             eigenmode = fe.Function(self.V)
             eigenmode.vector()[:] = rx
-            df.loc[i, "eigenmode"] = rx
+            # df.loc[i, "eigenmode"] = rx
+
+            # Append to a list (better than in df)
+            eigenmodes.append(eigenmode)
 
             # Calculate vector norm which can be regarded as a measure for magnitude of elongation
             df.loc[i, "norm"] = fe.norm(eigenmode)
@@ -164,20 +181,31 @@ class LinearElasticity:
             # values, counts = np.unique(np.round(np.sort(mesh_coord, axis = 0)[:,0], decimals = 5), return_counts = True)
             # b = np.split(mag, np.cumsum(counts))
             # a = [np.mean(arr) for arr in b]
+
             r_squared = 0
-
-            if df.loc[i, "norm"] > 0.005 and (
-                df.loc[i, "eigenfrequency"].real > 20000
-                and df.loc[i, "eigenfrequency"].real < 220000
+            if (
+                df.loc[i, "norm"] > 0.005
+                and (
+                    df.loc[i, "eigenfrequency"].real > 20000
+                    and df.loc[i, "eigenfrequency"].real < 220000
+                )
+                and df.loc[i, "maximum"] > 50
             ):
-                # and maximum > 1:
-                # Write i-th eigenfunction to xdmf file only if the norm surpasses a
-                # certain value (otherwise it is probably only jitter)
-                # eigenmode.rename(str(df.loc[i, "eigenfrequency"]), "")
-                # file_results.write(eigenmode, 0)
+                r_squared = self.determine_relevant_mode(eigenmode, eigenfrequency)
+            # and maximum > 1:
+            # Write i-th eigenfunction to xdmf file only if the norm surpasses a
+            # certain value (otherwise it is probably only jitter)
+            # eigenmode.rename(str(df.loc[i, "eigenfrequency"]), "")
+            # file_results.write(eigenmode, 0)
 
-                # Determine relevant mode using r_squared of a quadratic fit
-                r_squared = self.determine_relevant_mode(eigenmode)
+            # Determine relevant mode using r_squared of a quadratic fit
+            # x, y, z, mode_magnitude = self.extract_coordinates(eigenmode)
+
+            # plt.plot(mode_magnitude)
+            # plt.show()
+            # plt.scatter(x, y, c=mode_magnitude)
+            # plt.show()
+            # self.write_to_xdmf(eigenmode)
 
             df.loc[i, "r_squared"] = r_squared
 
@@ -208,21 +236,72 @@ class LinearElasticity:
 
         # Sometimes the relevant eigenfrequency is not on the list so
         # retriggering with a higher N is imperative
-        if dominant_eigenfrequency < self.target_frequency / 5:
+        if (
+            dominant_eigenfrequency < self.target_frequency / 5
+            or df.r_squared.to_numpy()[0] < 0.2
+        ):
             print(
                 "Relevant eigenfrequency not found, repeating to solve with twice the number of eigenvalues."
             )
-            dominant_eigenfrequency = self.solve_eigenstates(
+            dominant_eigenfrequency, dominant_eigenmode = self.solve_eigenstates(
                 eigensolver, int(2 * N_eig)
             )
+        else:
+            # Get eigenmode of dominant mode
+            dominant_eigenmode = eigenmodes[df.iloc[0].name]
 
-        return dominant_eigenfrequency
+        # Extract x,y,z and the magnitude of the mode
+        x, y, z, mode_magnitude = self.extract_coordinates(dominant_eigenmode)
 
-        # Plot the profiles
+        # Plot
+        # plt.scatter(x, y, c=mode_magnitude)
+        # plt.plot(mode_magnitude)
         # plt.legend()
         # plt.show()
 
+        # ------ End plotting -------
+        return dominant_eigenfrequency, dominant_eigenmode
+
         # Plot the most relevant mode
+
+    def extract_coordinates(self, eigenmode):
+        """
+        Function to extract coordinates
+        """
+        # Plot the mode for the dominant eigenfrequency
+        coord = self.V.sub(0).collapse().tabulate_dof_coordinates()
+        num_dofs_per_component = int(self.V.dim() / self.V.num_sub_spaces())
+        num_sub_spaces = self.V.num_sub_spaces()
+
+        vector = np.zeros((num_sub_spaces, num_dofs_per_component))
+
+        for i in range(num_sub_spaces):
+            vector[i] = eigenmode.sub(i, deepcopy=True).vector().get_local()
+
+        coord = self.V.sub(0).collapse().tabulate_dof_coordinates()
+        vector = vector.T
+
+        # for coord, vec in zip(x, vector):
+        # print(coord, vec)
+        x = coord[:, 0]
+        y = coord[:, 1]
+        z = coord[:, 2]
+
+        mode_magnitude = np.sum(np.abs(vector), axis=1)
+
+        return x, y, z, mode_magnitude
+
+    def write_to_xdmf(self, eigenmode):
+        """
+        write to xdmf file that can be opened in paraview
+        """
+        # Set up file for exporting results
+        file_results = fe.XDMFFile("modal_analysis.xdmf")
+        file_results.parameters["flush_output"] = True
+        file_results.parameters["functions_share_mesh"] = True
+
+        # Write to file
+        file_results.write(eigenmode, 0)
 
     def compute_mises_stress(self, eigenmode):
         # Compute Mises Stress
