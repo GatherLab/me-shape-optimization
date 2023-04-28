@@ -30,7 +30,7 @@ accuracy = 10e-6
 # optimization steps
 # learning_rate = 2 * 1e-10
 # grad_step = 100e-6
-no_optimization_steps = 200
+no_optimization_steps = 500
 
 # Target frequency and number of eigenstates to compute (for solver)
 target_frequency = 100000
@@ -38,7 +38,7 @@ no_eigenstates = 10
 
 
 # Update velocity parameters
-no_particles = 2
+no_particles = 20
 
 # in m/step
 min_velocity = -1e-3
@@ -47,31 +47,10 @@ max_velocity = 1e-3
 # Loop over different combinations of inertia, cognitive_weight and social weight:
 weights = []
 
-weights.append([1.4, 0.5, 0.5])
-weights.append([1.4, 0.5, 1.0])
-weights.append([1.4, 0.5, 1.5])
-weights.append([1.4, 0.5, 2.0])
-weights.append([1.4, 0.5, 2.5])
-weights.append([1.4, 1.0, 0.5])
-weights.append([1.4, 1.0, 1.0])
 weights.append([1.4, 1.0, 1.5])
-weights.append([1.4, 1.0, 2.0])
-weights.append([1.4, 1.0, 2.5])
-weights.append([1.4, 1.5, 0.5])
-weights.append([1.4, 1.5, 1.0])
-weights.append([1.4, 1.5, 1.5])
-weights.append([1.4, 1.5, 2.0])
-weights.append([1.4, 1.5, 2.5])
-weights.append([1.4, 2.0, 0.5])
-weights.append([1.4, 2.0, 1.0])
-weights.append([1.4, 2.0, 1.5])
-weights.append([1.4, 2.0, 2.0])
-weights.append([1.4, 2.0, 2.5])
-weights.append([1.4, 2.5, 0.5])
-weights.append([1.4, 2.5, 1.0])
-weights.append([1.4, 2.5, 1.5])
-weights.append([1.4, 2.5, 2.0])
-weights.append([1.4, 2.5, 2.5])
+# weights.append([1.4, 1.0, 1.2])
+# weights.append([1.4, 1.0, 1.3])
+# weights.append([1.4, 1.0, 1.4])
 
 # --------------------
 # Randomly initialize P "particles" with P velocities
@@ -82,7 +61,7 @@ weights = np.array(weights)
 index = 0
 for weight in weights:
     # Create a new folder
-    folder = os.path.join("./", "particle-swarm3{0}/".format(index))
+    folder = os.path.join("./img/particle_swarm/", "particle-swarm5{0}/".format(index))
     os.makedirs(folder, exist_ok=True)
 
     # Should be lower than 1 (typically between 0.4 and 0.9)
@@ -179,11 +158,11 @@ for weight in weights:
                     i + 1, no_particles
                 )
             )
-            particles[i, 2] = cf.do_simulation(
+            particles[i, 2], x, y, magnitude = cf.do_simulation(
                 particles[i, 0].mesh, E, nu, rho, target_frequency, no_eigenstates
             )
 
-            cf.plot_shape(particles[i, 0].mesh, particles[i, 2], folder, Lmax)
+            cf.plot_shape_with_resonance(x, y, magnitude, particles[i, 2], folder, Lmax)
 
             # The features should be saved in separate files for each particle!
             cf.append_feature(
