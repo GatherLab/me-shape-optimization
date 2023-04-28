@@ -17,12 +17,12 @@ Lmax, Bmax, Hmax = 12e-3, 3e-3, 0.2e-3
 # Define minimum width
 Bmin = 1e-3
 # Define initial width
-Binit = 1.5e-3
+Binit = 3e-3
 # Defines the number of adjustable parts
 grid_size = 0.5e-3
 # Accuracy of the adjustment (defined by the real world, e.g. less than 10 um
 # accuracy doesn't make sense)
-accuracy = 10e-6
+accuracy = 50e-6
 
 # Learning rate, step size to determine gradient and maximum number of
 # optimization steps
@@ -35,7 +35,7 @@ target_frequency = 100000
 no_eigenstates = 15
 
 # Folder to save to
-folder = "./sim-24-segments-after-annealing/"
+folder = "./img/gradient_descent/24-segments2/"
 
 
 # --------------------
@@ -46,8 +46,8 @@ folder = "./sim-24-segments-after-annealing/"
 line00 = "Material: Youngs modulus (E) = {0} N/m2, Poissons ratio(nu) = {1}, density (rho) = {2} kg/m3".format(
     E, nu, rho
 )
-line01 = "Geometry: L = {0} mm, Bmin = {2} mm, Bmax = {1} mm, H = {2} mm, grid size = {3} mm, accuracy = {4} mm".format(
-    Lmax * 1e3, Bmax * 1e3, Bmin * 1e3, Hmax * 1e3, grid_size * 1e3, accuracy * 1e3
+line01 = "Geometry: L = {0} mm, Bmin = {1} mm, Bmax = {2} mm, H = {3} mm, grid size = {4} mm, accuracy = {5} mm".format(
+    Lmax * 1e3, Bmin * 1e3, Bmax * 1e3, Hmax * 1e3, grid_size * 1e3, accuracy * 1e3
 )
 line02 = "Simulation: learning rate = {0}, discrete gradient step = {1} mm, max optimization steps = {2}, Binit = {3} mm".format(
     learning_rate, grad_step * 1e3, no_optimization_steps, Binit * 1e3
@@ -64,7 +64,6 @@ with open(folder + "features.csv", "a+") as csvfile:
 # Generate initial geometry
 # --------------------
 
-"""
 # Randomly initialize geometry
 geometry = Geometry(Lmax, Bmax, Hmax, grid_size, accuracy, Bmin)
 # geometry.generate_random_vertical_length()
@@ -72,10 +71,11 @@ geometry = Geometry(Lmax, Bmax, Hmax, grid_size, accuracy, Bmin)
 geometry.init_rectangular_geometry(Binit)
 # geometry.generate_boolean_grid()
 geometry.generate_mesh()
-"""
+
 # --------------------
 # Or read in from file
 # --------------------
+"""
 feature_file = "./simulated_annealing3/features.csv"
 # Read in features from file
 number_features = 24
@@ -97,7 +97,7 @@ cf.plot_shape(
     Lmax,
     save=False,
 )
-
+"""
 # --------------------
 # Init initial shape
 # --------------------
@@ -113,7 +113,7 @@ resonance_frequency_df = pd.DataFrame(
 )
 
 
-initial_eigenfrequency = cf.do_simulation(
+initial_eigenfrequency, x, y, magnitude = cf.do_simulation(
     geometry.mesh, E, nu, rho, target_frequency, no_eigenstates
 )
 
@@ -122,7 +122,7 @@ resonance_frequency_df.loc[resonance_frequency_df.shape[0]] = np.append(
 )
 
 
-cf.plot_shape(geometry.mesh, initial_eigenfrequency, folder, Lmax)
+cf.plot_shape_with_resonance(x, y, magnitude, initial_eigenfrequency, folder, Lmax)
 cf.append_feature(
     initial_eigenfrequency, folder + "features.csv", geometry.horizontal_lengths
 )
@@ -176,7 +176,7 @@ def calculate_gradient(geometry, grad_step, initial_eigenfrequency):
         geometry.generate_mesh()
 
         # Do the actual simulation to obtain a resonance frequency
-        eigenfrequency = cf.do_simulation(
+        eigenfrequency, x, y, magnitude = cf.do_simulation(
             geometry.mesh, E, nu, rho, target_frequency, no_eigenstates
         )
 
@@ -213,7 +213,7 @@ for step in range(no_optimization_steps):
     # geometry.generate_boolean_grid()
     geometry.generate_mesh()
 
-    initial_eigenfrequency = cf.do_simulation(
+    initial_eigenfrequency, x, y, magnitude = cf.do_simulation(
         geometry.mesh, E, nu, rho, target_frequency, no_eigenstates
     )
 
@@ -221,7 +221,7 @@ for step in range(no_optimization_steps):
         initial_eigenfrequency, geometry.horizontal_lengths
     )
 
-    cf.plot_shape(geometry.mesh, initial_eigenfrequency, folder, Lmax)
+    cf.plot_shape_with_resonance(x,y, magnitude, initial_eigenfrequency, folder, Lmax)
     cf.append_feature(
         initial_eigenfrequency, folder + "features.csv", geometry.horizontal_lengths
     )

@@ -35,7 +35,7 @@ target_frequency = 100000
 no_eigenstates = 10
 
 # Folder to save to
-folder = "./simulated_annealing3/"
+folder = "./img/simulated_annealing/simulated-annealing4/"
 
 
 # --------------------
@@ -83,7 +83,7 @@ resonance_frequency_df = pd.DataFrame(
 # geometry.generate_boolean_grid()
 geometry.generate_mesh()
 
-initial_eigenfrequency = cf.do_simulation(
+initial_eigenfrequency, x, y, magnitude = cf.do_simulation(
     geometry.mesh, E, nu, rho, target_frequency, no_eigenstates
 )
 
@@ -91,7 +91,7 @@ resonance_frequency_df.loc[resonance_frequency_df.shape[0]] = np.append(
     initial_eigenfrequency, geometry.horizontal_lengths
 )
 
-cf.plot_shape(geometry.mesh, initial_eigenfrequency, folder, Lmax)
+cf.plot_shape_with_resonance(x, y, magnitude, initial_eigenfrequency, folder, Lmax)
 cf.append_feature(
     initial_eigenfrequency, folder + "features.csv", geometry.horizontal_lengths
 )
@@ -127,7 +127,7 @@ for step in range(np.size(temperatures)):
     # geometry.generate_boolean_grid()
     geometry.generate_mesh()
 
-    eigenfrequency = cf.do_simulation(
+    eigenfrequency, x, y, magnitude = cf.do_simulation(
         geometry.mesh, E, nu, rho, target_frequency, no_eigenstates
     )
 
@@ -139,7 +139,7 @@ for step in range(np.size(temperatures)):
             initial_eigenfrequency, geometry.horizontal_lengths
         )
 
-        cf.plot_shape(geometry.mesh, eigenfrequency, folder, Lmax)
+        cf.plot_shape_with_resonance(x, y, magnitude, initial_eigenfrequency, folder, Lmax)
         cf.append_feature(
             eigenfrequency, folder + "features.csv", geometry.horizontal_lengths
         )
@@ -167,7 +167,7 @@ for step in range(np.size(temperatures)):
                 initial_eigenfrequency, geometry.horizontal_lengths
             )
 
-            cf.plot_shape(geometry.mesh, eigenfrequency, folder, Lmax)
+            cf.plot_shape_with_resonance(x, y, magnitude, initial_eigenfrequency, folder, Lmax)
             cf.append_feature(
                 eigenfrequency, folder + "features.csv", geometry.horizontal_lengths
             )
