@@ -1,9 +1,10 @@
 from dolfin import *
 from mshr import *
 
-import pylab as plt
+# import pylab as plt
 import numpy as np
-import pandas as pd
+
+# import pandas as pd
 
 import core_functions as cf
 

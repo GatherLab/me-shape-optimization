@@ -7,6 +7,8 @@ from solver import LinearElasticity
 
 import dolfin as fe
 
+import os, psutil
+
 
 def myround(x, base=5):
     """
@@ -21,11 +23,27 @@ def do_simulation(mesh, E, nu, rho, target_frequency, no_eigenstates):
     resonance frequency)
     """
 
+    # print(
+    # "memory start: {0}".format(
+    # psutil.Process(os.getpid()).memory_info().rss / 1024**2
+    # )
+    # )
     # Init class
     linear_elasticity = LinearElasticity(E, nu, rho, mesh)
 
+    # print(
+    # "memory after init: {0}".format(
+    # psutil.Process(os.getpid()).memory_info().rss / 1024**2
+    # )
+    # )
+
     # Init vector and function spaces using a mesh
     V = linear_elasticity.init_geometry()
+    # print(
+    #     "memory after init geometry: {0}".format(
+    #         psutil.Process(os.getpid()).memory_info().rss / 1024**2
+    #     )
+    # )
 
     # Init boundary conditions
     # No z movement allowed at all
@@ -42,14 +60,35 @@ def do_simulation(mesh, E, nu, rho, target_frequency, no_eigenstates):
     bc2 = fe.DirichletBC(V.sub(1), fe.Constant(0.0), fixed_y)
 
     linear_elasticity.init_dirichlet_boundary_conditions([bc, bc2])
+    # print(
+    #     "memory after bc: {0}".format(
+    #         psutil.Process(os.getpid()).memory_info().rss / 1024**2
+    #     )
+    # )
 
     # Solve for eigenstates/values and save to file
-    eigensolver = linear_elasticity.init_eigensolver(target_frequency)
-    eigenfrequency, eigenmode = linear_elasticity.solve_eigenstates(
-        eigensolver, no_eigenstates
-    )
+    linear_elasticity.init_eigensolver(target_frequency)
+
+    # print(
+    #     "memory after init eigensolver: {0}".format(
+    #         psutil.Process(os.getpid()).memory_info().rss / 1024**2
+    #     )
+    # )
+    eigenfrequency, eigenmode = linear_elasticity.solve_eigenstates(no_eigenstates)
+    # print(
+    #     "memory after solving: {0}".format(
+    #         psutil.Process(os.getpid()).memory_info().rss / 1024**2
+    #     )
+    # )
 
     x, y, z, magnitudes = linear_elasticity.extract_coordinates(eigenmode)
+    # print(
+    #     "memory after extracting coordinates: {0}".format(
+    #         psutil.Process(os.getpid()).memory_info().rss / 1024**2
+    #     )
+    # )
+
+    del linear_elasticity
 
     return eigenfrequency, x, y, magnitudes
 
@@ -127,7 +166,7 @@ def plot_shape_with_resonance(x, y, magnitude, eigenfrequency, folder, L, save=T
             folder + "shape_{0:.0f}_Hz.png".format(round(eigenfrequency, 0)),
             bbox_inches="tight",
         )
-        plt.close()
+        plt.close("all")
     else:
         plt.show()
 

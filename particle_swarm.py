@@ -4,7 +4,7 @@ import numpy as np
 from shape_generation import Geometry
 import core_functions as cf
 
-import os
+import os, psutil
 
 # --------------------
 # Parameter Definitions
@@ -34,7 +34,7 @@ no_optimization_steps = 500
 
 # Target frequency and number of eigenstates to compute (for solver)
 target_frequency = 100000
-no_eigenstates = 10
+no_eigenstates = 15
 
 
 # Update velocity parameters
@@ -61,7 +61,7 @@ weights = np.array(weights)
 index = 0
 for weight in weights:
     # Create a new folder
-    folder = os.path.join("./img/particle_swarm/", "particle-swarm5{0}/".format(index))
+    folder = os.path.join("./img/particle_swarm/", "particle-swarm9{0}/".format(index))
     os.makedirs(folder, exist_ok=True)
 
     # Should be lower than 1 (typically between 0.4 and 0.9)
@@ -149,6 +149,7 @@ for weight in weights:
                 iteration + 1, no_optimization_steps
             )
         )
+
         i = 0
 
         # Go through all geometries
@@ -158,11 +159,28 @@ for weight in weights:
                     i + 1, no_particles
                 )
             )
+            print(particles[i, 0].horizontal_lengths)
+            # print(
+            # "memory start{0}".format(
+            # psutil.Process(os.getpid()).memory_info().rss / 1024**2
+            # )
+            # )
             particles[i, 2], x, y, magnitude = cf.do_simulation(
                 particles[i, 0].mesh, E, nu, rho, target_frequency, no_eigenstates
             )
+            # print(
+            # "memory after simulation {0}".format(
+            # psutil.Process(os.getpid()).memory_info().rss / 1024**2
+            # )
+            # )
 
             cf.plot_shape_with_resonance(x, y, magnitude, particles[i, 2], folder, Lmax)
+
+            # print(
+            # "memory after plotting {0}".format(
+            # psutil.Process(os.getpid()).memory_info().rss / 1024**2
+            # )
+            # )
 
             # The features should be saved in separate files for each particle!
             cf.append_feature(

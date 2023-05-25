@@ -21,6 +21,47 @@ large grid) can be solved quite easily with gradient descent in a short time.
 
 ```
 
+### Memory Consumption
+Memory is allocated and accumulated over the simulations. The problem definitely
+lies in the cf.do_simulation() function and within that in the solver.py.
+
+I found that other people had similar problems that seem to be related to the
+options set for the PETSC solver. It is the options object that must somehow be deleted.
+(https://fenicsproject.discourse.group/t/force-clear-petsc-solver-from-memory/8427/7).
+
+There are two main factors driving memory consumption:
+
+memory start: 285.51953125
+memory after init: 285.51953125
+memory after init geometry: 365.01171875
+memory after bc: 368.52734375
+memory after init eigensolver: 368.52734375
+memory after solving: 918.6015625
+memory after extracting coordinates: 918.6015625
+
+the geometry initialisation and more seveerely the solving itself!
+
+Within that function it is also quite clear:
+
+memory start: 341.60546875
+Solving for eigenstates
+memory after solving: 946.29296875
+memory before dominant eigenfrequency: 960.30859375
+Dominant eigenfrequency: 110010.0 Hz (in 14.60 s)
+memory end: 960.37109375
+
+Solving the eigenstates takes the memory and does not free it again afterwards.
+
+The solution must be to instantiate the SLEPSc solver only once and then update
+it instead of reininstantiating it. This seems to be the problem
+(https://fenicsproject.discourse.group/t/error-setting-petsc-options-repeatedly/6728/2).
+
+Also do not reinitialize the function space etc. all the time: 
+
+https://fenicsproject.discourse.group/t/exchanging-the-mesh-in-fenics/9622/2
+
+So basically have the class that I have right now and only update the mesh, solver etc.
+
 ## Determining the Relevant Mode
 
 ## Derivative Free Optimization Methods

@@ -10,6 +10,8 @@ from scipy.optimize import curve_fit
 
 import core_functions as cf
 
+# import os, psutil
+
 # Source: https://fenics-solid-tutorial.readthedocs.io/en/latest/EigenvalueProblem/EigenvalueProblem.html
 
 
@@ -29,6 +31,28 @@ class LinearElasticity:
         # --------------------
         # Function spaces
         # --------------------
+        self.V = fe.VectorFunctionSpace(self.mesh, "Lagrange", 1)
+        u_tr = fe.TrialFunction(self.V)
+        u_test = fe.TestFunction(self.V)
+
+        # --------------------
+        # Forms & matrices
+        # --------------------
+        a_form = fe.inner(self.sigma(u_tr), self.epsilon(u_test)) * fe.dx
+        m_form = self.rho * fe.inner(u_tr, u_test) * fe.dx
+
+        self.A = fe.PETScMatrix()
+        self.M = fe.PETScMatrix()
+        self.A = fe.assemble(a_form, tensor=self.A)
+        self.M = fe.assemble(m_form, tensor=self.M)
+        return self.V
+
+    def update_geometry(self, mesh):
+        # --------------------
+        # Function spaces
+        # --------------------
+        self.mesh = mesh
+
         self.V = fe.VectorFunctionSpace(self.mesh, "Lagrange", 1)
         u_tr = fe.TrialFunction(self.V)
         u_test = fe.TestFunction(self.V)
@@ -72,14 +96,15 @@ class LinearElasticity:
         Initialise eigensolver
         """
         self.target_frequency = target_frequency
-        eigensolver = fe.SLEPcEigenSolver(self.A, self.M)
-        eigensolver.parameters["problem_type"] = "gen_hermitian"
-        eigensolver.parameters["spectrum"] = "target real"
-        eigensolver.parameters["spectral_transform"] = "shift-and-invert"
-        eigensolver.parameters["spectral_shift"] = target_frequency**2 * 2 * fe.pi
-        return eigensolver
+        self.eigensolver = fe.SLEPcEigenSolver(self.A, self.M)
+        self.eigensolver.parameters["problem_type"] = "gen_hermitian"
+        self.eigensolver.parameters["spectrum"] = "target real"
+        self.eigensolver.parameters["spectral_transform"] = "shift-and-invert"
+        self.eigensolver.parameters["spectral_shift"] = (
+            target_frequency**2 * 2 * fe.pi
+        )
 
-    def determine_relevant_mode(self, eigenmode, eigenfrequency):
+    def determine_relevant_mode(self, eigenmode):
         """
         Function to evaluate which of the calculated modes is the most relevant
         """
@@ -122,8 +147,8 @@ class LinearElasticity:
         )
 
         # Plotting of the relevant eigenmodes
-        plt.plot(x_center_line, magnitude_center_line, label=str(eigenfrequency))
-        plt.plot(x_center_line, func(x_center_line, *popt), "--")
+        # plt.plot(x_center_line, magnitude_center_line, label=str(eigenfrequency))
+        # plt.plot(x_center_line, func(x_center_line, *popt), "--")
         # plt.show()
 
         # Determine quality of the fit
@@ -132,22 +157,41 @@ class LinearElasticity:
         ss_tot = np.sum((magnitude_center_line - np.mean(magnitude_center_line)) ** 2)
         r_squared = 1 - (ss_res / ss_tot)
 
-        return r_squared
+        return r_squared, np.sum(magnitude_center_line)
 
-    def solve_eigenstates(self, eigensolver, N_eig=10):
+    def solve_eigenstates(self, N_eig=10):
         """
         Solve for the N first eigenstates
         """
+
+        # print(
+        #     "memory start: {0}".format(
+        #         psutil.Process(os.getpid()).memory_info().rss / 1024**2
+        #     )
+        # )
         starting_time = time.time()
         print("Solving for eigenstates")
-        eigensolver.solve(N_eig)
+        self.eigensolver.solve(N_eig)
+        # print(
+        #     "memory after solving: {0}".format(
+        #         psutil.Process(os.getpid()).memory_info().rss / 1024**2
+        #     )
+        # )
 
         # file_results = fe.XDMFFile("MA.xdmf")
         # file_results.parameters["flush_output"] = True
         # file_results.parameters["functions_share_mesh"] = True
 
         eigenmodes = []
-        df = pd.DataFrame(columns=["eigenfrequency", "norm", "maximum", "r_squared"])
+        df = pd.DataFrame(
+            columns=[
+                "eigenfrequency",
+                "norm",
+                "maximum",
+                "additional_var",
+                "r_squared",
+            ]
+        )
 
         # Eigenfrequencies
         for i in range(0, N_eig):
@@ -156,7 +200,7 @@ class LinearElasticity:
             # c - imaginary part of eigenvalue
             # rx - real part of eigenvector
             # cx - imaginary part of eigenvector
-            r, c, rx, cx = eigensolver.get_eigenpair(i)
+            r, c, rx, cx = self.eigensolver.get_eigenpair(i)
 
             # Calculation of eigenfrequency from real part of eigenvalue
             eigenfrequency = fe.sqrt(r) / 2 / fe.pi
@@ -173,6 +217,9 @@ class LinearElasticity:
             # Calculate vector norm which can be regarded as a measure for magnitude of elongation
             df.loc[i, "norm"] = fe.norm(eigenmode)
             df.loc[i, "maximum"] = eigenmode.vector().max()
+            # x, y, z, mode_magnitude = self.extract_coordinates(eigenmode)
+            # df.loc[i, "norm"] = np.linalg.norm(mode_magnitude)
+            # df.loc[i, "maximum"] = np.max(mode_magnitude)
 
             # Execute
 
@@ -191,7 +238,10 @@ class LinearElasticity:
                 )
                 and df.loc[i, "maximum"] > 50
             ):
-                r_squared = self.determine_relevant_mode(eigenmode, eigenfrequency)
+                (
+                    r_squared,
+                    df.loc[i, "additional_var"],
+                ) = self.determine_relevant_mode(eigenmode)
             # and maximum > 1:
             # Write i-th eigenfunction to xdmf file only if the norm surpasses a
             # certain value (otherwise it is probably only jitter)
@@ -226,6 +276,7 @@ class LinearElasticity:
         # Round the dominant eigenfrequency to about 10 Hz, which seems to be
         # about the spread of the solver accuracy
         dominant_eigenfrequency = cf.myround(df.eigenfrequency.to_numpy()[0], 10)
+
         time_elapsed = time.time() - starting_time
         # print(df)
         print(
@@ -244,7 +295,7 @@ class LinearElasticity:
                 "Relevant eigenfrequency not found, repeating to solve with twice the number of eigenvalues."
             )
             dominant_eigenfrequency, dominant_eigenmode = self.solve_eigenstates(
-                eigensolver, int(2 * N_eig)
+                int(2 * N_eig)
             )
         else:
             # Get eigenmode of dominant mode
@@ -252,6 +303,10 @@ class LinearElasticity:
 
         # Extract x,y,z and the magnitude of the mode
         x, y, z, mode_magnitude = self.extract_coordinates(dominant_eigenmode)
+
+        # mode_no = 5
+        # x, y, z, mode_magnitude = self.extract_coordinates(eigenmodes[mode_no])
+        # cf.plot_shape_with_resonance(x, y, mode_magnitude, df.loc[mode_no].eigenfrequency, "./", 12e-3)
 
         # Plot
         # plt.scatter(x, y, c=mode_magnitude)
@@ -261,8 +316,6 @@ class LinearElasticity:
 
         # ------ End plotting -------
         return dominant_eigenfrequency, dominant_eigenmode
-
-        # Plot the most relevant mode
 
     def extract_coordinates(self, eigenmode):
         """

@@ -30,7 +30,7 @@ target_frequency = 100000
 no_eigenstates = 15
 
 # Folder to save to
-folder = "./img/scipy/shgo1/"
+folder = "./img/scipy/shgo2/"
 description = "SHGO optimization, scipy.optimize.shgo(opt_function, bounds)"
 
 os.makedirs(folder, exist_ok=True)

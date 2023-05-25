@@ -36,11 +36,11 @@ no_optimization_steps = 50
 
 # Target frequency and number of eigenstates to compute (for solver)
 target_frequency = 100000
-no_eigenstates = 10
+no_eigenstates = 15
 
 # File to read data from
-folder_path = "./img/particle_swarm/particle-swarm50/"
-file = "features_p1.csv"
+folder_path = "./img/particle_swarm/particle-swarm60/"
+file = "features_p19.csv"
 
 
 # --------------------
@@ -51,7 +51,7 @@ number_features = 24
 resonances_and_features = cf.read_features(folder_path + file, number_features)
 
 # Select a feature and generate geometry from it
-selected_feature = 1
+selected_feature = 34
 
 geometry = Geometry(Lmax, Bmax, Hmax, grid_size, accuracy, Bmin)
 geometry.adjust_horizontal_length(
