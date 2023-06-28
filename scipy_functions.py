@@ -1,99 +1,55 @@
-import pandas as pd
-import numpy as np
+from geometry_generator import generate_geometry, generate_gmsh_mesh
+from solver import unified_solving_function, determine_first_longitudinal_mode
+from visualisation import visualise_3D, append_feature
+
+from dolfinx.io.gmshio import model_to_mesh
+
+import sys
 import os
+import numpy as np
 
-from shape_generation import Geometry
-import core_functions as cf
+from mpi4py import MPI
+from slepc4py import SLEPc
+import slepc4py
 
-# --------------------
-# Parameter Definitions
-# --------------------
+slepc4py.init(sys.argv)
 
-# Define material parameters
-E, nu = 5.4e10, 0.34
-rho = 7950.0
+import pyvista
 
-# Define maximum length, width and height
-Lmax, Bmax, Hmax = 12e-3, 3e-3, 0.2e-3
-# Define minimum width
+pyvista.start_xvfb()
+
+# Define geometry parameters
+L, H, B = 12e-3, 0.2e-3, 3e-3
+
 Bmin = 1e-3
-# Define initial width
-Binit = 1.5e-3
-# Defines the number of adjustable parts
+Bmax = B
 grid_size = 0.5e-3
-# Accuracy of the adjustment (defined by the real world, e.g. less than 10 um
-# accuracy doesn't make sense)
-accuracy = 10e-6
 
-# Target frequency and number of eigenstates to compute (for solver)
-target_frequency = 100000
-no_eigenstates = 15
+# Select boundary conditions to apply
+bc_z = False
+bc_y = False
+no_eigenvalues = 50
 
-# Folder to save to
-folder = "./img/scipy/shgo2/"
+# Set a folder to save the features
+folder = "./shape_optimization/shape_optimization/results/scipy1/"
 description = "SHGO optimization, scipy.optimize.shgo(opt_function, bounds)"
 
 os.makedirs(folder, exist_ok=True)
 
-
-# --------------------
-# Initialise Data Dump
-# --------------------
-
 # Generate a file that contains the meta data in the header
-line00 = "Material: Youngs modulus (E) = {0} N/m2, Poissons ratio(nu) = {1}, density (rho) = {2} kg/m3".format(
-    E, nu, rho
-)
 line01 = "Geometry: L = {0} mm, Bmin = {2} mm, Bmax = {1} mm, H = {2} mm, grid size = {3} mm, accuracy = {4} mm".format(
-    Lmax * 1e3, Bmax * 1e3, Bmin * 1e3, Hmax * 1e3, grid_size * 1e3, accuracy * 1e3
+    L * 1e3, Bmax * 1e3, Bmin * 1e3, H * 1e3, grid_size * 1e3
 )
 line02 = description
 line03 = "### Simulation Results ###"
 line04 = "Resonance Frequency (Hz)\t Features (m)\n"
 
-header_lines = [line00, line01, line02, line03, line04]
+header_lines = [line01, line02, line03, line04]
 
 with open(folder + "features.csv", "a+") as csvfile:
     csvfile.write("\n".join(header_lines))
 
-# --------------------
-# Generate initial geometry
-# --------------------
-
-# Randomly initialize geometry
-geometry = Geometry(Lmax, Bmax, Hmax, grid_size, accuracy, Bmin)
-# geometry.generate_random_vertical_length()
-# geometry.generate_random_horizontal_length()
-geometry.init_rectangular_geometry(Binit)
-# geometry.generate_boolean_grid()
-geometry.generate_mesh()
-
-"""
-# --------------------
-# Or read in from file
-# --------------------
-feature_file = "./simulated_annealing3/features.csv"
-# Read in features from file
-number_features = 24
-resonances_and_features = cf.read_features(feature_file, number_features)
-
-# Select a feature and generate geometry from it
-selected_feature = -1
-
-geometry = Geometry(Lmax, Bmax, Hmax, grid_size, accuracy, Bmin)
-geometry.adjust_horizontal_length(
-    resonances_and_features.iloc[selected_feature].to_numpy()[1:]
-)
-geometry.generate_mesh()
-
-cf.plot_shape(
-    geometry.mesh,
-    resonances_and_features.iloc[selected_feature]["eigenfrequency"],
-    feature_file,
-    Lmax,
-    save=False,
-)
-"""
+eigensolver = SLEPc.EPS().create(MPI.COMM_WORLD)
 
 
 # --------------------
@@ -105,18 +61,20 @@ def opt_function(horizontal_lengths):
     optimized with the different scipy optimizers.
     """
     # Change geometry
-    geometry.adjust_horizontal_length(horizontal_lengths)
-    geometry.generate_mesh()
+    gmsh_mesh = generate_gmsh_mesh(L, H, B, horizontal_lengths)
 
-    # Calculate eigenfrequency
-    eigenfrequency, x, y, magnitude = cf.do_simulation(
-        geometry.mesh, E, nu, rho, target_frequency, no_eigenstates
+    V, eigenvalues, eigenmodes, first_longitudinal_mode = unified_solving_function(
+        eigensolver, gmsh_mesh, L, H, B, bc_z, bc_y, no_eigenvalues
+    )
+    # Plot first longitudinal mode only
+    eigenfrequency = np.sqrt(eigenvalues[first_longitudinal_mode].real) / 2 / np.pi
+    saving_path = folder + "{i:.2f}.png".format(i=eigenfrequency)
+    visualise_3D(
+        V, eigenvalues, eigenmodes, first_longitudinal_mode, saving_path, viewup=True
     )
 
-    cf.plot_shape_with_resonance(x, y, magnitude, eigenfrequency, folder, Lmax)
-
     # The features should be saved in separate files for each particle!
-    cf.append_feature(
+    append_feature(
         eigenfrequency,
         folder + "features.csv",
         horizontal_lengths,
@@ -125,9 +83,6 @@ def opt_function(horizontal_lengths):
     return eigenfrequency
 
 
-# Actual optimization algorithm
-# from scipy.optimize import differential_evolution
-# from scipy.optimize import dual_annealing
 from scipy.optimize import shgo
 
 bounds = (
@@ -135,10 +90,7 @@ bounds = (
         Bmin,
         Bmax,
     ),
-) * np.size(geometry.horizontal_lengths)
+) * int(L / grid_size)
 
-# print(bounds)
 
 final_results = shgo(opt_function, bounds)
-
-print(final_results)

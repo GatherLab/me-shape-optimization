@@ -1,377 +1,346 @@
-# import fenics as fe
-import dolfin as fe
+import psutil
+import os
+
 import numpy as np
-import pylab as plt
 import pandas as pd
+from scipy.signal import argrelextrema
 
-import time
+from petsc4py import PETSc
+from slepc4py import SLEPc
 
-from scipy.optimize import curve_fit
-
-import core_functions as cf
-
-# import os, psutil
-
-# Source: https://fenics-solid-tutorial.readthedocs.io/en/latest/EigenvalueProblem/EigenvalueProblem.html
+from dolfinx import fem, plot
+import ufl
+from visualisation import visualise_3D, visualise_mesh
 
 
-def func(x, a, b, c):
-    return a * (x - b) ** 2 + c
+def unified_solving_function(
+    eigensolver,
+    geometry_mesh,
+    L,
+    H,
+    B,
+    bc_z,
+    bc_y,
+    no_eigenvalues=25,
+    target_frequency=100000,
+):
+    # Define vector space from geometry mesh
+    V = fem.VectorFunctionSpace(geometry_mesh, ("CG", 2))
 
+    u = ufl.TrialFunction(V)
+    v = ufl.TestFunction(V)
 
-class LinearElasticity:
-    def __init__(self, E, nu, rho, mesh):
-        # Lame's constants
-        self.mu = E / 2.0 / (1 + nu)
-        self.lmbda = E * nu / (1 + nu) / (1 - 2 * nu)
-        self.rho = rho
-        self.mesh = mesh
+    fdim = geometry_mesh.topology.dim - 1
 
-    def init_geometry(self):
-        # --------------------
-        # Function spaces
-        # --------------------
-        self.V = fe.VectorFunctionSpace(self.mesh, "Lagrange", 1)
-        u_tr = fe.TrialFunction(self.V)
-        u_test = fe.TestFunction(self.V)
+    # Fixed z
+    space, map = V.sub(2).collapse()
+    u_D1 = fem.Function(space)
 
-        # --------------------
-        # Forms & matrices
-        # --------------------
-        a_form = fe.inner(self.sigma(u_tr), self.epsilon(u_test)) * fe.dx
-        m_form = self.rho * fe.inner(u_tr, u_test) * fe.dx
+    # Assign all the displacements along y to be zero
+    with u_D1.vector.localForm() as loc:
+        loc.set(0.0)
 
-        self.A = fe.PETScMatrix()
-        self.M = fe.PETScMatrix()
-        self.A = fe.assemble(a_form, tensor=self.A)
-        self.M = fe.assemble(m_form, tensor=self.M)
-        return self.V
+    # Locate facets where y = 0 or y = H
+    locate_dofs1 = fem.locate_dofs_geometrical(
+        (V.sub(1), space),
+        lambda x: np.logical_or(np.isclose(x[1], 0), np.isclose(x[1], H)),
+    )
 
-    def update_geometry(self, mesh):
-        # --------------------
-        # Function spaces
-        # --------------------
-        self.mesh = mesh
+    # Create Dirichlet BC
+    bc1 = fem.dirichletbc(u_D1, locate_dofs1, V.sub(1))
 
-        self.V = fe.VectorFunctionSpace(self.mesh, "Lagrange", 1)
-        u_tr = fe.TrialFunction(self.V)
-        u_test = fe.TestFunction(self.V)
+    # Fixed y
+    # Get sub space of y's
+    space_2, map_2 = V.sub(2).collapse()
+    u_D2 = fem.Function(space_2)
 
-        # --------------------
-        # Forms & matrices
-        # --------------------
-        a_form = fe.inner(self.sigma(u_tr), self.epsilon(u_test)) * fe.dx
-        m_form = self.rho * fe.inner(u_tr, u_test) * fe.dx
+    # Assign all the displacements along y to be zero
+    with u_D2.vector.localForm() as loc:
+        loc.set(0.0)
 
-        self.A = fe.PETScMatrix()
-        self.M = fe.PETScMatrix()
-        self.A = fe.assemble(a_form, tensor=self.A)
-        self.M = fe.assemble(m_form, tensor=self.M)
-        return self.V
+    # Locate facets where y = 0 or y = H
+    locate_dofs2 = fem.locate_dofs_geometrical(
+        (V.sub(2), space_2),
+        lambda x: np.logical_or(np.isclose(x[2], 0), np.isclose(x[2], B)),
+    )
 
-    def init_dirichlet_boundary_conditions(self, dirichlet_bc):
-        # --------------------
-        # Dirichlet Boundary conditions
-        # --------------------
-        for bc in dirichlet_bc:
-            bc.apply(self.A)
-            bc.apply(self.M)
+    # Create Dirichlet BC
+    bc2 = fem.dirichletbc(u_D2, locate_dofs2, V.sub(2))
 
-    # --------------------
-    # Functions and classes
-    # --------------------
-    # Strain function
-    def epsilon(self, u):
-        return 0.5 * (fe.nabla_grad(u) + fe.nabla_grad(u).T)
+    # Define actual problem
+    E, nu = (5.4e10), (0.34)
+    rho = 7950.0
+    mu = E / 2.0 / (1 + nu)
+    lambda_ = E * nu / (1 + nu) / (1 - 2 * nu)
 
-    # Stress function
-    def sigma(self, u):
-        return self.lmbda * fe.div(u) * fe.Identity(3) + 2 * self.mu * self.epsilon(u)
+    def epsilon(u):
+        return 0.5 * (ufl.nabla_grad(u) + ufl.nabla_grad(u).T)
 
-    # --------------------
-    # Eigensolver
-    # --------------------
-    def init_eigensolver(self, target_frequency=100000.0):
-        """
-        Initialise eigensolver
-        """
-        self.target_frequency = target_frequency
-        self.eigensolver = fe.SLEPcEigenSolver(self.A, self.M)
-        self.eigensolver.parameters["problem_type"] = "gen_hermitian"
-        self.eigensolver.parameters["spectrum"] = "target real"
-        self.eigensolver.parameters["spectral_transform"] = "shift-and-invert"
-        self.eigensolver.parameters["spectral_shift"] = (
-            target_frequency**2 * 2 * fe.pi
-        )
+    def sigma(u):
+        return lambda_ * ufl.nabla_div(u) * ufl.Identity(3) + 2 * mu * epsilon(u)
 
-    def determine_relevant_mode(self, eigenmode):
-        """
-        Function to evaluate which of the calculated modes is the most relevant
-        """
+    T = fem.Constant(
+        geometry_mesh, (PETSc.ScalarType(0), PETSc.ScalarType(0), PETSc.ScalarType(0))
+    )
+    k_form = ufl.inner(sigma(u), epsilon(v)) * ufl.dx
+    m_form = rho * ufl.dot(u, v) * ufl.dx
+    k = fem.form(k_form)
+    m = fem.form(m_form)
 
-        """
-        # This section is to plot the modes and estimate which one is
-        # the one I am interested in
-        vector_field = np.reshape(
-            eigenmode.vector().get_local(),
-            [int(eigenmode.vector().get_local().size / 3), 3],
-        )
-        # calculate magnitude
-        mag = np.linalg.norm(vector_field, axis=1)
-        # Get running average of the magnitude
-        N = 5000
-        averaged_magnitude = np.convolve(mag, np.ones(N) / N, mode="valid")
-        """
+    # One of the big questions is: which boundary conditions do we apply?
+    # I am able to retrieve sensible results for either no boundary conditions, only
+    # boundary condition 1 and both boundary conditions. The resonance frequency
+    # changes quite a bit though.
 
-        # Transform simulation to readable data
-        x, y, z, mode_magnitude = self.extract_coordinates(eigenmode)
+    if bc_z == True and bc_y == True:
+        bcs_applied = [bc1, bc2]
+    if bc_z == True and bc_y == False:
+        bcs_applied = [bc1]
+    if bc_z == False and bc_y == True:
+        bcs_applied = [bc2]
+    if bc_z == False and bc_y == False:
+        bcs_applied = []
 
-        # Construct dataframe from it for easier handling
-        df = pd.DataFrame({"x": x, "y": y, "mag": mode_magnitude})
+    ## Takes about 13 MB RAM
+    K = fem.petsc.assemble_matrix(k, bcs=bcs_applied)
+    M = fem.petsc.assemble_matrix(m, bcs=bcs_applied)
 
-        # Get only data along the centering line (y=0)
-        x_center_line = df.loc[np.isclose(y, 0, atol=1e-4)].x.to_numpy()
-        magnitude_center_line = df.loc[np.isclose(y, 0, atol=1e-4)].mag.to_numpy()
+    K.assemble()
+    M.assemble()
 
-        # plt.plot(x_center_line, magnitude_center_line)
+    # Define eigensolver and solve for eigenvalues
+    eigensolver.setOperators(K, M)
 
-        # Fit the data with a quadratic curve fit
-        popt, pcov = curve_fit(
-            func,
-            x_center_line,
-            magnitude_center_line,
-            bounds=(
-                [0, 0.4 * np.max(x_center_line), 0],
-                [np.inf, 0.6 * np.max(x_center_line), np.inf],
-            ),
-        )
+    eigensolver.setProblemType(SLEPc.EPS.ProblemType.GHEP)
+    # tol = 1e-9
+    # eigensolver.setTolerances(tol=tol)
 
-        # Plotting of the relevant eigenmodes
-        # plt.plot(x_center_line, magnitude_center_line, label=str(eigenfrequency))
-        # plt.plot(x_center_line, func(x_center_line, *popt), "--")
-        # plt.show()
+    # Shift and invert mode
+    st = eigensolver.getST()
+    st.setType(SLEPc.ST.Type.SINVERT)
+    # target real eigenvalues
+    eigensolver.setWhichEigenpairs(SLEPc.EPS.Which.TARGET_REAL)
+    # Set the target frequency
+    eigensolver.setTarget(target_frequency**2 * 2 * np.pi)
+    # Set no of eigenvalues to compute
+    eigensolver.setDimensions(nev=no_eigenvalues)
+    ##
+    eigensolver.solve()
 
-        # Determine quality of the fit
-        residuals = magnitude_center_line - func(x_center_line, *popt)
-        ss_res = np.sum(residuals**2)
-        ss_tot = np.sum((magnitude_center_line - np.mean(magnitude_center_line)) ** 2)
-        r_squared = 1 - (ss_res / ss_tot)
+    """
+    Presort for sensible modes
+    """
+    # Get the number of converged eigenpairs
+    evs = eigensolver.getConverged()
 
-        return r_squared, np.sum(magnitude_center_line)
+    # Create dummy vectors for the eigenvectors to store the results in
+    vr, vi = K.createVecs()
 
-    def solve_eigenstates(self, N_eig=10):
-        """
-        Solve for the N first eigenstates
-        """
+    eigenvalues = []
+    eigenmodes = []
 
-        # print(
-        #     "memory start: {0}".format(
-        #         psutil.Process(os.getpid()).memory_info().rss / 1024**2
-        #     )
-        # )
-        starting_time = time.time()
-        print("Solving for eigenstates")
-        self.eigensolver.solve(N_eig)
-        # print(
-        #     "memory after solving: {0}".format(
-        #         psutil.Process(os.getpid()).memory_info().rss / 1024**2
-        #     )
-        # )
+    for mode_number in range(evs):
+        # Get eigenvalue, eigenvector is saved in vr and vi
+        eigenvalue = eigensolver.getEigenpair(mode_number, vr, vi)
+        # e_vec = eigensolver.getEigenvector(i, eh.vector)
 
-        # file_results = fe.XDMFFile("MA.xdmf")
-        # file_results.parameters["flush_output"] = True
-        # file_results.parameters["functions_share_mesh"] = True
+        if ~np.isclose(eigenvalue.real, 1.0, atol=5):
+            eigenvalues.append(eigenvalue)
 
-        eigenmodes = []
-        df = pd.DataFrame(
-            columns=[
-                "eigenfrequency",
-                "norm",
-                "maximum",
-                "additional_var",
-                "r_squared",
-            ]
-        )
-
-        # Eigenfrequencies
-        for i in range(0, N_eig):
-            # Get i-th eigenvalue and eigenvector
-            # r - real part of eigenvalue
-            # c - imaginary part of eigenvalue
-            # rx - real part of eigenvector
-            # cx - imaginary part of eigenvector
-            r, c, rx, cx = self.eigensolver.get_eigenpair(i)
-
-            # Calculation of eigenfrequency from real part of eigenvalue
-            eigenfrequency = fe.sqrt(r) / 2 / fe.pi
-            df.loc[i, "eigenfrequency"] = eigenfrequency
-            # Initialize function and assign eigenvector
-            # eigenmode = fe.Function(V, name="Eigenvector " + str(i))
-            eigenmode = fe.Function(self.V)
-            eigenmode.vector()[:] = rx
-            # df.loc[i, "eigenmode"] = rx
-
-            # Append to a list (better than in df)
+            eigenmode = fem.Function(V)
+            eigenmode.vector[:] = vr.getArray()
             eigenmodes.append(eigenmode)
 
-            # Calculate vector norm which can be regarded as a measure for magnitude of elongation
-            df.loc[i, "norm"] = fe.norm(eigenmode)
-            df.loc[i, "maximum"] = eigenmode.vector().max()
-            # x, y, z, mode_magnitude = self.extract_coordinates(eigenmode)
-            # df.loc[i, "norm"] = np.linalg.norm(mode_magnitude)
-            # df.loc[i, "maximum"] = np.max(mode_magnitude)
+    # If this is selected, only the first longitudinal mode is returned
+    first_longitudinal_eigenmode = determine_first_longitudinal_mode(
+        V, eigenmodes, eigenvalues, target_frequency
+    )
+    # first_longitudinal_eigenmode = 1
 
-            # Execute
+    print(
+        "Current RAM usage: {0} MB".format(
+            psutil.Process(os.getpid()).memory_info().rss / 1024**2
+        )
+    )
 
-            # This was the attempt of averaging over z-y coordinates to get a clean 1-D graph
-            # mesh_coord = self.mesh.coordinates()
-            # values, counts = np.unique(np.round(np.sort(mesh_coord, axis = 0)[:,0], decimals = 5), return_counts = True)
-            # b = np.split(mag, np.cumsum(counts))
-            # a = [np.mean(arr) for arr in b]
+    return V, eigenvalues, eigenmodes, first_longitudinal_eigenmode
 
-            r_squared = 0
-            if (
-                df.loc[i, "norm"] > 0.005
-                and (
-                    df.loc[i, "eigenfrequency"].real > 20000
-                    and df.loc[i, "eigenfrequency"].real < 220000
+
+def determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequency):
+    """
+    One feature - though maybe not distinct - is that the first longitudinal
+    mode is symmetric along its long-axis. This should be a first filter to apply.
+    Of the modes that are symmetric along the long-axis, the first longitudinal
+    mode is the one with the lowest y displacement.
+    """
+    i = 0
+    df_results = pd.DataFrame(
+        columns=["symmetric", "eigenfrequency", "x_max", "y_max", "z_max"]
+    )
+
+    for eigenmode in eigenmodes:
+        topology, cell_types, geometry = plot.create_vtk_mesh(V)
+
+        # Get the displacement vector
+        warp_vector = eigenmode.x.array.reshape((geometry.shape[0], 3))
+
+        # Concatenate both arrays into a pandas dataframe
+        norm = np.linalg.norm(warp_vector, axis=1)
+        # geometry_plus_norm = np.append(geometry, np.reshape(norm, [511, 1]), axis=1)
+        geometry_plus_norm = np.append(geometry, warp_vector, axis=1)
+        df = pd.DataFrame(
+            geometry_plus_norm, columns=["x", "y", "z", "x_warp", "y_warp", "z_warp"]
+        ).round(decimals=5)
+
+        grouped = df.groupby(["x", "y"])
+
+        # Get indices of arrays that have an agreeing min and max z value (min = -max) and are non-zero
+        indices = np.logical_and(
+            np.isclose(grouped.z.transform(min), -1 * grouped.z.transform(max)),
+            ~np.isclose(grouped.z.transform(min), 0),
+        )
+
+        # Now get all entries where z is minimum and maximum for a given pair of x and y
+        minimum = (
+            df[indices]
+            .sort_values(["x", "y", "z"], ascending=[True, True, True])
+            .groupby(["x", "y"])
+            .first()
+        )
+        maximum = (
+            df[indices]
+            .sort_values(["x", "y", "z"], ascending=[True, True, False])
+            .groupby(["x", "y"])
+            .first()
+        )
+
+        # Now obtain the max and min z values again for each pair of x and y
+        # a = df[indices].groupby(["x", "y"]).z.transform(max) == df[indices].z
+        # b = df[indices].groupby(["x", "y"]).z.transform(min) == df[indices].z
+        # c = df.loc[a.loc[a == True].index].loc[df.z != 0].sort_values(["x", "y"])
+        # d = df.loc[b.loc[b == True].index].loc[df.z != 0].sort_values(["x", "y"])
+
+        # Now get the warp values and subtract them from each other
+
+        """
+
+        df.sort_values(["x", "y", "z"], ignore_index=True).groupby(["x", "y"]).z.max()
+
+        # Only get values where y is max
+        df_ymax = df.loc[np.isclose(df.y.to_numpy(), df.y.max())].sort_values(
+            ["x", "z"], ignore_index=True
+        )
+
+        # The difficulty will now be to determine the longitudinal axis to impose a
+        # symmetry
+        x_max_boundary = df_ymax.loc[
+            np.isclose(df_ymax.z, df_ymax.z.max())
+        ].x_warp.to_numpy()
+        x_min_boundary = df_ymax.loc[
+            np.isclose(df_ymax.z, df_ymax.z.min())
+        ].x_warp.to_numpy()
+
+        # y_max_boundary = df_ymax.loc[df_ymax.z == df_ymax.z.max()].y_warp.to_numpy()
+        # y_min_boundary = df_ymax.loc[df_ymax.z == df_ymax.z.min()].y_warp.to_numpy()
+
+        z_max_boundary = df_ymax.loc[
+            np.isclose(df_ymax.z, df_ymax.z.max())
+        ].z_warp.to_numpy()
+        z_min_boundary = df_ymax.loc[
+            np.isclose(df_ymax.z, df_ymax.z.min())
+        ].z_warp.to_numpy()
+        # if i == 18:
+        # print("Test")
+
+        # print(
+        #     i,
+        #     np.logical_and(
+        #         np.allclose(x_max_boundary, x_min_boundary, atol=10e-0),
+        #         np.allclose(z_max_boundary, -1 * z_min_boundary, atol=10e-0),
+        #     ),
+        #     df.x_warp.max(),
+        #     df.y_warp.max(),
+        #     df.z_warp.max(),
+        # )
+        """
+
+        # Calculate order of mode by getting the number of minima along the x-direction
+        """
+        x_warp_along_center = (
+            df.loc[
+                np.logical_and(
+                    np.isclose(df.z, (df.z.max() - df.z.min()) / 2),
+                    np.isclose(df.y, df.y.max() / 2),
+                ),
+                "x_warp",
+            ]
+            .abs()
+            .to_numpy()
+        )
+        no_minima = np.size(argrelextrema(x_warp_along_center, np.less))
+        """
+
+        eigenfrequency = np.sqrt(eigenvalues[i].real) / 2 / np.pi
+        min_x_warp = minimum.x_warp.to_numpy(int)
+        min_x_warp[np.abs(min_x_warp) < 50] = 0
+        max_x_warp = maximum.x_warp.to_numpy(int)
+        max_x_warp[np.abs(max_x_warp) < 50] = 0
+
+        # min_z_warp = minimum.z_warp.to_numpy(int)
+        # min_z_warp[np.abs(min_z_warp) < 10] = 0
+        # max_z_warp = maximum.z_warp.to_numpy(int)
+        # max_z_warp[np.abs(max_z_warp) < 10] = 0
+
+        df_results.loc[i] = [
+            np.all(
+                np.logical_or(
+                    np.sign(min_x_warp) == np.sign(max_x_warp),
+                    np.logical_or(np.sign(min_x_warp) == 0, np.sign(max_x_warp) == 0),
                 )
-                and df.loc[i, "maximum"] > 50
-            ):
-                (
-                    r_squared,
-                    df.loc[i, "additional_var"],
-                ) = self.determine_relevant_mode(eigenmode)
-            # and maximum > 1:
-            # Write i-th eigenfunction to xdmf file only if the norm surpasses a
-            # certain value (otherwise it is probably only jitter)
-            # eigenmode.rename(str(df.loc[i, "eigenfrequency"]), "")
-            # file_results.write(eigenmode, 0)
+            ),
+            # np.logical_or(
+            # np.sign(min_x_warp) == np.sign(max_x_warp)),
+            # np.sign(min_x_warp) == 0 or np.sign(max_x_warp) == 0,
+            # np.all(np.sign(min_z_warp) == -1 * np.sign(max_z_warp)),
+            # np.allclose(
+            # minimum.x_warp.to_numpy(), maximum.x_warp.to_numpy(), atol=50
+            # ),
+            # np.allclose(
+            # minimum.z_warp.to_numpy(), -maximum.z_warp.to_numpy(), atol=50
+            # ),
+            # ),
+            eigenfrequency,
+            df.x_warp.max(),
+            df.y_warp.max(),
+            df.z_warp.max(),
+        ]
+        i += 1
 
-            # Determine relevant mode using r_squared of a quadratic fit
-            # x, y, z, mode_magnitude = self.extract_coordinates(eigenmode)
-
-            # plt.plot(mode_magnitude)
-            # plt.show()
-            # plt.scatter(x, y, c=mode_magnitude)
-            # plt.show()
-            # self.write_to_xdmf(eigenmode)
-
-            df.loc[i, "r_squared"] = r_squared
-
-            # print(
-            #     "Eigenfrequency {0}: {1:8.5f} [Hz], with norm {2:8.14f}, and max {3} and residuals {4}".format(
-            #         i,
-            #         df.loc[i, "eigenfrequency"],
-            #         df.loc[i, "norm"],
-            #         df.loc[i, "maximum"],
-            #         df.loc[i, "r_squared"],
-            #     )
-            # )
-
-        # Sort dataframe in descending order
-        df.sort_values("r_squared", inplace=True, ascending=False)
-        # print(df)
-
-        # Round the dominant eigenfrequency to about 10 Hz, which seems to be
-        # about the spread of the solver accuracy
-        dominant_eigenfrequency = cf.myround(df.eigenfrequency.to_numpy()[0], 10)
-
-        time_elapsed = time.time() - starting_time
-        # print(df)
-        print(
-            "Dominant eigenfrequency: {0:.1f} Hz (in {1:.2f} s)".format(
-                dominant_eigenfrequency, time_elapsed
+    # Now obtain the first longitudinal mode by selecting for symmetry and
+    # minimum y displacement
+    no_of_first_longitudinal_mode = df_results.loc[
+        df_results.y_max
+        == df_results.loc[
+            np.logical_and(
+                df_results.symmetric,
+                np.logical_and(
+                    df_results.eigenfrequency > target_frequency * 0.5,
+                    df_results.eigenfrequency < target_frequency * 1.5,
+                ),
             )
-        )
+        ].y_max.min()
+    ].index[0]
 
-        # Sometimes the relevant eigenfrequency is not on the list so
-        # retriggering with a higher N is imperative
-        if (
-            dominant_eigenfrequency < self.target_frequency / 5
-            or df.r_squared.to_numpy()[0] < 0.2
-        ):
-            print(
-                "Relevant eigenfrequency not found, repeating to solve with twice the number of eigenvalues."
-            )
-            dominant_eigenfrequency, dominant_eigenmode = self.solve_eigenstates(
-                int(2 * N_eig)
-            )
-        else:
-            # Get eigenmode of dominant mode
-            dominant_eigenmode = eigenmodes[df.iloc[0].name]
+    print(
+        "Mode {0} is the first longitudinal one.".format(no_of_first_longitudinal_mode)
+    )
 
-        # Extract x,y,z and the magnitude of the mode
-        x, y, z, mode_magnitude = self.extract_coordinates(dominant_eigenmode)
+    """
+    if df.eigenfrequency < 50000 or eigenfrequency > 150000:
+        for mode_no in range(np.size(eigenvalues)):
+            saving_path = "deflection{i}.png".format(i=mode_no)
+            visualise_3D(V, eigenvalues, eigenmodes, mode_no, saving_path)
+        print("stop")
+    """
 
-        # mode_no = 5
-        # x, y, z, mode_magnitude = self.extract_coordinates(eigenmodes[mode_no])
-        # cf.plot_shape_with_resonance(x, y, mode_magnitude, df.loc[mode_no].eigenfrequency, "./", 12e-3)
-
-        # Plot
-        # plt.scatter(x, y, c=mode_magnitude)
-        # plt.plot(mode_magnitude)
-        # plt.legend()
-        # plt.show()
-
-        # ------ End plotting -------
-        return dominant_eigenfrequency, dominant_eigenmode
-
-    def extract_coordinates(self, eigenmode):
-        """
-        Function to extract coordinates
-        """
-        # Plot the mode for the dominant eigenfrequency
-        coord = self.V.sub(0).collapse().tabulate_dof_coordinates()
-        num_dofs_per_component = int(self.V.dim() / self.V.num_sub_spaces())
-        num_sub_spaces = self.V.num_sub_spaces()
-
-        vector = np.zeros((num_sub_spaces, num_dofs_per_component))
-
-        for i in range(num_sub_spaces):
-            vector[i] = eigenmode.sub(i, deepcopy=True).vector().get_local()
-
-        coord = self.V.sub(0).collapse().tabulate_dof_coordinates()
-        vector = vector.T
-
-        # for coord, vec in zip(x, vector):
-        # print(coord, vec)
-        x = coord[:, 0]
-        y = coord[:, 1]
-        z = coord[:, 2]
-
-        mode_magnitude = np.sum(np.abs(vector), axis=1)
-
-        return x, y, z, mode_magnitude
-
-    def write_to_xdmf(self, eigenmode):
-        """
-        write to xdmf file that can be opened in paraview
-        """
-        # Set up file for exporting results
-        file_results = fe.XDMFFile("modal_analysis.xdmf")
-        file_results.parameters["flush_output"] = True
-        file_results.parameters["functions_share_mesh"] = True
-
-        # Write to file
-        file_results.write(eigenmode, 0)
-
-    def compute_mises_stress(self, eigenmode):
-        # Compute Mises Stress
-        deviatoric_stress_tensor = self.sigma(eigenmode) - 1 / 3 * fe.tr(
-            self.sigma(eigenmode)
-        ) * fe.Identity(eigenmode.geometric_dimension())
-
-        # This is a scalar field
-        van_mises_stress = fe.sqrt(
-            3 / 2 * fe.inner(deviatoric_stress_tensor, deviatoric_stress_tensor)
-        )
-
-        # New function space
-        lagrange_scalar_space_first_order = fe.FunctionSpace(self.mesh, "CG", 2)
-
-        van_mises_stress = fe.project(
-            van_mises_stress, lagrange_scalar_space_first_order
-        )
-
-        return van_mises_stress
+    return no_of_first_longitudinal_mode
