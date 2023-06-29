@@ -1,6 +1,10 @@
 import sys
 import psutil
 import os
+import gc
+import tracemalloc
+
+tracemalloc.start()
 
 import numpy as np
 import matplotlib.pylab as plt
@@ -22,6 +26,10 @@ import pyvista
 import pandas as pd
 
 pyvista.start_xvfb()
+
+import gmsh
+
+gmsh.initialize()
 
 print(
     "memory start: {0}".format(
@@ -376,32 +384,18 @@ def unified_solving_function(eigensolver, geometry_mesh):
     # changes quite a bit though.
 
     ## Takes about 13 MB RAM
-    K = fem.petsc.assemble_matrix(k, bcs=[bc1])
-    M = fem.petsc.assemble_matrix(m, bcs=[bc1])
+    K = fem.petsc.assemble_matrix(k, bcs=[])
+    M = fem.petsc.assemble_matrix(m, bcs=[])
 
     K.assemble()
     M.assemble()
 
     # Define eigensolver and solve for eigenvalues
-    no_eigenvalues = 30
+    no_eigenvalues = 20
     target_frequency = 100000
 
     eigensolver.setOperators(K, M)
 
-    eigensolver.setProblemType(SLEPc.EPS.ProblemType.GHEP)
-    # tol = 1e-9
-    # eigensolver.setTolerances(tol=tol)
-
-    # Shift and invert mode
-    st = eigensolver.getST()
-    st.setType(SLEPc.ST.Type.SINVERT)
-    # target real eigenvalues
-    eigensolver.setWhichEigenpairs(SLEPc.EPS.Which.TARGET_REAL)
-    # Set the target frequency
-    eigensolver.setTarget(target_frequency**2 * 2 * np.pi)
-    # Set no of eigenvalues to compute
-    eigensolver.setDimensions(nev=no_eigenvalues)
-    ##
     eigensolver.solve()
     evs = eigensolver.getConverged()
 
@@ -428,8 +422,22 @@ def unified_solving_function(eigensolver, geometry_mesh):
     print(psutil.Process(os.getpid()).memory_info().rss / 1024**2)
 
 
+target_frequency = 100e3
+no_eigenvalues = 20
 # Eigensolver has to be defined once and then updated to prevent RAM leakage
 eigensolver = SLEPc.EPS().create(MPI.COMM_WORLD)
+
+# Shift and invert mode
+st = eigensolver.getST()
+st.setType(SLEPc.ST.Type.SINVERT)
+# target real eigenvalues
+eigensolver.setWhichEigenpairs(SLEPc.EPS.Which.TARGET_REAL)
+# Set the target frequency
+eigensolver.setTarget(target_frequency**2 * 2 * np.pi)
+# Set no of eigenvalues to compute
+eigensolver.setDimensions(nev=no_eigenvalues)
+eigensolver.setProblemType(SLEPc.EPS.ProblemType.GHEP)
+##
 
 L, H, B = 12e-3, 0.2e-3, 3e-3
 # Geometry initialization
@@ -440,6 +448,12 @@ geometry_mesh = mesh.create_box(
     cell_type=mesh.CellType.tetrahedron,
 )
 
+# Choose if Gmsh output is verbose
+gmsh.option.setNumber("General.Terminal", 0)
+model = gmsh.model()
+model.add("Box")
+model.setCurrent("Box")
+
 i = 1
 while True:
     print(i)
@@ -449,17 +463,23 @@ while True:
     grid_size = 0.5e-3
     # else:
     # L, H, B = 11e-3, 0.2e-3, 3e-3
+    print(psutil.Process(os.getpid()).memory_info().rss / 1024**2)
     geometry_width_list = np.random.uniform(1e-3, B, int(L / grid_size))
-    gmsh_mesh = generate_gmsh_mesh(L, H, B, geometry_width_list)
+    print(psutil.Process(os.getpid()).memory_info().rss / 1024**2)
+    gmsh_mesh = generate_gmsh_mesh(model, L, H, B, geometry_width_list)
 
+    print(psutil.Process(os.getpid()).memory_info().rss / 1024**2)
     geometry_mesh = mesh.create_box(
         MPI.COMM_WORLD,
         [np.array([0, 0, 0]), np.array([L, H, B])],
         [20, 2, 5],
         cell_type=mesh.CellType.tetrahedron,
     )
+    print(psutil.Process(os.getpid()).memory_info().rss / 1024**2)
     ##
     unified_solving_function(eigensolver, geometry_mesh)
+    print(psutil.Process(os.getpid()).memory_info().rss / 1024**2)
+
     i += 1
 
 

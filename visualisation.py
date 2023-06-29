@@ -9,11 +9,16 @@ import pyvista
 pyvista.start_xvfb()
 
 
-def visualise_3D(V, eigenvalues, eigenmodes, mode_number, saving_path, viewup=False):
+def visualise_3D(
+    plotter, V, eigenvalues, eigenmodes, mode_number, saving_path, viewup=False
+):
     """
     Function to plot the resonance mode in 3D with a warping according to the
     displacement
     """
+    # Clear plotter before next stuff can be plotted
+    plotter.clear()
+
     eigenvalue = eigenvalues[mode_number]
     eigenmode = eigenmodes[mode_number]
 
@@ -22,26 +27,27 @@ def visualise_3D(V, eigenvalues, eigenmodes, mode_number, saving_path, viewup=Fa
 
     # Create plotter and pyvista grid
     # p = pyvista.Plotter(off_screen=True)
-    p = pyvista.Plotter(off_screen=True)
     topology, cell_types, geometry = plot.create_vtk_mesh(V)
     grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 
     # Attach vector values to grid and warp grid by vector
     grid["u"] = eigenmode.x.array.reshape((geometry.shape[0], 3))
-    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
+    actor_0 = plotter.add_mesh(grid, style="wireframe", color="k")
     warped = grid.warp_by_vector("u", factor=2e-6)
-    actor_1 = p.add_mesh(warped, show_edges=True)
-    p.show_axes()
+    actor_1 = plotter.add_mesh(warped, show_edges=True)
+    plotter.show_axes()
     if viewup:
-        p.view_xz()
-    if not p.off_screen:
-        p.show()
+        plotter.view_xz()
+    if not plotter.off_screen:
+        plotter.show()
     else:
-        figure_as_array = p.screenshot(saving_path)
+        figure_as_array = plotter.screenshot(saving_path)
 
-    pyvista.close_all()
+    # p.close()
+    # p.deep_clean()
+    # pyvista.close_all()
 
-    print("Solid FE: {0:8.5f} [Hz]".format(freq_3D))
+    print("Resonance Frequency: ".format(freq_3D))
 
 
 def visualise_mesh(mesh, saving_path):

@@ -21,19 +21,14 @@ def generate_geometry(L, H, B):
     return geometry_mesh
 
 
-def generate_gmsh_mesh(L, H, B, geometry_width_list):
+def generate_gmsh_mesh(model, L, H, B, geometry_width_list):
     """
     https://jsdokken.com/src/tutorial_gmsh.html
     """
+    gmsh.clear()
     N = int(np.size(geometry_width_list))
 
-    gmsh.initialize()
-
-    # Choose if Gmsh output is verbose
-    gmsh.option.setNumber("General.Terminal", 0)
-    model = gmsh.model()
-    model.add("Box")
-    model.setCurrent("Box")
+    # gmsh.initialize()
 
     # The boxes are defined by a point x,y,z and the length in the x,y,z direction
     # Define a list of boxes with a unit lenght of L/N, height H and width B

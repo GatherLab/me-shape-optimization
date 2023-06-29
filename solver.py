@@ -11,6 +11,7 @@ from slepc4py import SLEPc
 from dolfinx import fem, plot
 import ufl
 from visualisation import visualise_3D, visualise_mesh
+import gc
 
 
 def unified_solving_function(
@@ -111,21 +112,15 @@ def unified_solving_function(
     # Define eigensolver and solve for eigenvalues
     eigensolver.setOperators(K, M)
 
-    eigensolver.setProblemType(SLEPc.EPS.ProblemType.GHEP)
     # tol = 1e-9
     # eigensolver.setTolerances(tol=tol)
-
-    # Shift and invert mode
-    st = eigensolver.getST()
-    st.setType(SLEPc.ST.Type.SINVERT)
-    # target real eigenvalues
-    eigensolver.setWhichEigenpairs(SLEPc.EPS.Which.TARGET_REAL)
-    # Set the target frequency
-    eigensolver.setTarget(target_frequency**2 * 2 * np.pi)
-    # Set no of eigenvalues to compute
-    eigensolver.setDimensions(nev=no_eigenvalues)
     ##
+    # before = psutil.Process(os.getpid()).memory_info().rss / 1024**2
     eigensolver.solve()
+
+    # after = psutil.Process(os.getpid()).memory_info().rss / 1024**2
+    # print("Mesh generation: " + str(after - before))
+    # before = after
 
     """
     Presort for sensible modes
@@ -155,7 +150,9 @@ def unified_solving_function(
     first_longitudinal_eigenmode = determine_first_longitudinal_mode(
         V, eigenmodes, eigenvalues, target_frequency
     )
-    # first_longitudinal_eigenmode = 1
+    """
+    first_longitudinal_eigenmode = 1
+    """
 
     print(
         "Current RAM usage: {0} MB".format(
@@ -286,10 +283,10 @@ def determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequen
         max_x_warp = maximum.x_warp.to_numpy(int)
         max_x_warp[np.abs(max_x_warp) < 50] = 0
 
-        # min_z_warp = minimum.z_warp.to_numpy(int)
-        # min_z_warp[np.abs(min_z_warp) < 10] = 0
-        # max_z_warp = maximum.z_warp.to_numpy(int)
-        # max_z_warp[np.abs(max_z_warp) < 10] = 0
+        min_z_warp = minimum.z_warp.to_numpy(int)
+        min_z_warp[np.abs(min_z_warp) < 50] = 0
+        max_z_warp = maximum.z_warp.to_numpy(int)
+        max_z_warp[np.abs(max_z_warp) < 50] = 0
 
         df_results.loc[i] = [
             np.all(
@@ -318,18 +315,32 @@ def determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequen
 
     # Now obtain the first longitudinal mode by selecting for symmetry and
     # minimum y displacement
-    no_of_first_longitudinal_mode = df_results.loc[
-        df_results.y_max
-        == df_results.loc[
-            np.logical_and(
-                df_results.symmetric,
+    try:
+        no_of_first_longitudinal_mode = df_results.loc[
+            df_results.y_max
+            == df_results.loc[
                 np.logical_and(
-                    df_results.eigenfrequency > target_frequency * 0.5,
-                    df_results.eigenfrequency < target_frequency * 1.5,
-                ),
-            )
-        ].y_max.min()
-    ].index[0]
+                    df_results.symmetric,
+                    np.logical_and(
+                        df_results.eigenfrequency > target_frequency * 0.5,
+                        df_results.eigenfrequency < target_frequency * 1.5,
+                    ),
+                )
+            ].y_max.min()
+        ].index[0]
+    except IndexError:
+        no_of_first_longitudinal_mode = df_results.loc[
+            df_results.y_max
+            == df_results.loc[
+                np.logical_and(
+                    df_results.symmetric,
+                    np.logical_and(
+                        df_results.eigenfrequency > target_frequency * 0.5,
+                        df_results.eigenfrequency < target_frequency * 2.0,
+                    ),
+                )
+            ].y_max.min()
+        ].index[0]
 
     print(
         "Mode {0} is the first longitudinal one.".format(no_of_first_longitudinal_mode)
@@ -342,5 +353,4 @@ def determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequen
             visualise_3D(V, eigenvalues, eigenmodes, mode_no, saving_path)
         print("stop")
     """
-
     return no_of_first_longitudinal_mode
