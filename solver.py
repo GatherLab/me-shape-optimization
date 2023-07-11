@@ -3,15 +3,16 @@ import os
 
 import numpy as np
 import pandas as pd
-from scipy.signal import argrelextrema
 
-from petsc4py import PETSc
-from slepc4py import SLEPc
-
+# from scipy.signal import argrelextrema
 from dolfinx import fem, plot
 import ufl
+
+from petsc4py import PETSc
+
+# from slepc4py import SLEPc
+
 from visualisation import visualise_3D, visualise_mesh
-import gc
 
 
 def unified_solving_function(
@@ -129,21 +130,22 @@ def unified_solving_function(
     evs = eigensolver.getConverged()
 
     # Create dummy vectors for the eigenvectors to store the results in
-    vr, vi = K.createVecs()
+    # vr, vi = K.createVecs()
 
     eigenvalues = []
     eigenmodes = []
 
     for mode_number in range(evs):
+        eigenmode = fem.Function(V)
         # Get eigenvalue, eigenvector is saved in vr and vi
-        eigenvalue = eigensolver.getEigenpair(mode_number, vr, vi)
+        # eigenvalue = eigensolver.getEigenpair(mode_number, vr, vi)
+        eigenvalue = eigensolver.getEigenpair(mode_number, eigenmode.vector)
         # e_vec = eigensolver.getEigenvector(i, eh.vector)
 
         if ~np.isclose(eigenvalue.real, 1.0, atol=5):
             eigenvalues.append(eigenvalue)
 
-            eigenmode = fem.Function(V)
-            eigenmode.vector[:] = vr.getArray()
+            # eigenmode.vector[:] = vr.getArray()
             eigenmodes.append(eigenmode)
 
     # If this is selected, only the first longitudinal mode is returned
@@ -210,72 +212,6 @@ def determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequen
             .groupby(["x", "y"])
             .first()
         )
-
-        # Now obtain the max and min z values again for each pair of x and y
-        # a = df[indices].groupby(["x", "y"]).z.transform(max) == df[indices].z
-        # b = df[indices].groupby(["x", "y"]).z.transform(min) == df[indices].z
-        # c = df.loc[a.loc[a == True].index].loc[df.z != 0].sort_values(["x", "y"])
-        # d = df.loc[b.loc[b == True].index].loc[df.z != 0].sort_values(["x", "y"])
-
-        # Now get the warp values and subtract them from each other
-
-        """
-
-        df.sort_values(["x", "y", "z"], ignore_index=True).groupby(["x", "y"]).z.max()
-
-        # Only get values where y is max
-        df_ymax = df.loc[np.isclose(df.y.to_numpy(), df.y.max())].sort_values(
-            ["x", "z"], ignore_index=True
-        )
-
-        # The difficulty will now be to determine the longitudinal axis to impose a
-        # symmetry
-        x_max_boundary = df_ymax.loc[
-            np.isclose(df_ymax.z, df_ymax.z.max())
-        ].x_warp.to_numpy()
-        x_min_boundary = df_ymax.loc[
-            np.isclose(df_ymax.z, df_ymax.z.min())
-        ].x_warp.to_numpy()
-
-        # y_max_boundary = df_ymax.loc[df_ymax.z == df_ymax.z.max()].y_warp.to_numpy()
-        # y_min_boundary = df_ymax.loc[df_ymax.z == df_ymax.z.min()].y_warp.to_numpy()
-
-        z_max_boundary = df_ymax.loc[
-            np.isclose(df_ymax.z, df_ymax.z.max())
-        ].z_warp.to_numpy()
-        z_min_boundary = df_ymax.loc[
-            np.isclose(df_ymax.z, df_ymax.z.min())
-        ].z_warp.to_numpy()
-        # if i == 18:
-        # print("Test")
-
-        # print(
-        #     i,
-        #     np.logical_and(
-        #         np.allclose(x_max_boundary, x_min_boundary, atol=10e-0),
-        #         np.allclose(z_max_boundary, -1 * z_min_boundary, atol=10e-0),
-        #     ),
-        #     df.x_warp.max(),
-        #     df.y_warp.max(),
-        #     df.z_warp.max(),
-        # )
-        """
-
-        # Calculate order of mode by getting the number of minima along the x-direction
-        """
-        x_warp_along_center = (
-            df.loc[
-                np.logical_and(
-                    np.isclose(df.z, (df.z.max() - df.z.min()) / 2),
-                    np.isclose(df.y, df.y.max() / 2),
-                ),
-                "x_warp",
-            ]
-            .abs()
-            .to_numpy()
-        )
-        no_minima = np.size(argrelextrema(x_warp_along_center, np.less))
-        """
 
         eigenfrequency = np.sqrt(eigenvalues[i].real) / 2 / np.pi
         min_x_warp = minimum.x_warp.to_numpy(int)

@@ -1,26 +1,26 @@
 import sys
 import psutil
 import os
-import gc
-import tracemalloc
 
-tracemalloc.start()
 
 import numpy as np
-import matplotlib.pylab as plt
 
-from geometry_generator import generate_geometry, generate_gmsh_mesh
-from scipy.optimize import root
-from mpi4py import MPI
+# import matplotlib.pylab as plt
+
+from geometry_generator import generate_gmsh_mesh
+
+# from scipy.optimize import root
 from petsc4py import PETSc
 from slepc4py import SLEPc
-
-from dolfinx import fem, io, plot, mesh
-import ufl
-
 import slepc4py
 
 slepc4py.init(sys.argv)
+
+from dolfinx import fem, plot, mesh
+import ufl
+
+from mpi4py import MPI
+
 
 import pyvista
 import pandas as pd

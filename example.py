@@ -63,38 +63,38 @@ model.setCurrent("Box")
 
 # Generate random numbers using numpy library with Bmax as a maximum and Bmin as
 # a minimum with L/grid_size entries
-# geometry_width_list = np.random.uniform(Bmin, Bmax, int(L / grid_size))
-geometry_width_list = [
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.003000,
-    0.001000,
-    0.003000,
-    0.001000,
-    0.003000,
-    0.001000,
-    0.003000,
-    0.003000,
-]
+geometry_width_list = np.random.uniform(Bmin, Bmax, int(L / grid_size))
+# geometry_width_list = [
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.003000,
+#     0.001000,
+#     0.003000,
+#     0.001000,
+#     0.003000,
+#     0.001000,
+#     0.003000,
+#     0.003000,
+# ]
 # geometry_width_list = np.repeat(B, int(L / grid_size))
 
 # With gmsh model
 # No memory leak
-geometry_mesh = generate_gmsh_mesh(L, H, B, geometry_width_list)
+geometry_mesh = generate_gmsh_mesh(model, L, H, B, geometry_width_list)
 
 """
 # With fenicsx mesh
@@ -118,7 +118,7 @@ V, eigenvalues, eigenmodes, first_longitudinal_mode = unified_solving_function(
 # Plot all eigenmodes
 for mode_no in range(np.size(eigenvalues)):
     saving_path = "deflection{i}.png".format(i=mode_no)
-    visualise_3D(V, eigenvalues, eigenmodes, mode_no, saving_path)
+    visualise_3D(plotter, V, eigenvalues, eigenmodes, mode_no, saving_path)
 
 determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequency)
 

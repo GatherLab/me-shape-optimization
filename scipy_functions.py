@@ -48,7 +48,7 @@ no_eigenvalues = 20
 target_frequency = 100e3
 
 # Set a folder to save the features
-folder = "./me-shape-optimization/results/scipy2/"
+folder = "./me-shape-optimization/results/shgo/"
 description = "SHGO optimization, scipy.optimize.shgo(opt_function, bounds), bcs on"
 
 os.makedirs(folder, exist_ok=True)
@@ -131,6 +131,9 @@ def opt_function(horizontal_lengths):
     eigenfrequency = np.sqrt(eigenvalues[first_longitudinal_mode].real) / 2 / np.pi
 
     saving_path = folder + "{i:.2f}.png".format(i=eigenfrequency)
+
+    # There might be still a tiny memory leakage stemming from the visualisation
+    # part. However, this should be < 1MB/iteration
     visualise_3D(
         plotter,
         V,
@@ -167,7 +170,7 @@ bounds = (
 ) * int(L / grid_size)
 
 
-# final_results = differential_evolution(opt_function, bounds)
-while True:
-    horizontal_lengths = np.random.uniform(Bmin, Bmax, int(L / grid_size))
-    opt_function(horizontal_lengths)
+final_results = shgo(opt_function, bounds)
+# while True:
+# horizontal_lengths = np.random.uniform(Bmin, Bmax, int(L / grid_size))
+# opt_function(horizontal_lengths)

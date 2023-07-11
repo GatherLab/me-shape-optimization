@@ -47,7 +47,7 @@ def visualise_3D(
     # p.deep_clean()
     # pyvista.close_all()
 
-    print("Resonance Frequency: ".format(freq_3D))
+    print("Resonance Frequency: {0}".format(freq_3D))
 
 
 def visualise_mesh(mesh, saving_path):
