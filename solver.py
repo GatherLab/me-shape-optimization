@@ -251,6 +251,14 @@ def determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequen
 
     # Now obtain the first longitudinal mode by selecting for symmetry and
     # minimum y displacement
+    df_results = df_results.sort_values("eigenfrequency")
+    no_of_first_longitudinal_mode = df_results.loc[
+        np.logical_and(
+            df_results.symmetric == True,
+            df_results.eigenfrequency > target_frequency * 0.5,
+        )
+    ].index.to_numpy()[0]
+    """
     try:
         no_of_first_longitudinal_mode = df_results.loc[
             df_results.y_max
@@ -277,6 +285,7 @@ def determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequen
                 )
             ].y_max.min()
         ].index[0]
+    """
 
     print(
         "Mode {0} is the first longitudinal one.".format(no_of_first_longitudinal_mode)
