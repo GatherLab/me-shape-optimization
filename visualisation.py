@@ -8,6 +8,8 @@ import pyvista
 
 pyvista.start_xvfb()
 
+import imageio
+
 
 def visualise_3D(
     plotter, V, eigenvalues, eigenmodes, mode_number, saving_path, viewup=False
@@ -26,7 +28,9 @@ def visualise_3D(
     freq_3D = np.sqrt(eigenvalue.real) / 2 / np.pi
 
     # Create plotter and pyvista grid
-    # p = pyvista.Plotter(off_screen=True)
+    if saving_path == None:
+        p = pyvista.Plotter(off_screen=True)
+
     topology, cell_types, geometry = plot.create_vtk_mesh(V)
     grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 
@@ -38,6 +42,13 @@ def visualise_3D(
     plotter.show_axes()
     if viewup:
         plotter.view_xz()
+
+        plotter.add_text(
+            "{0:.2f} Hz".format(freq_3D),
+            position="upper_left",
+            color="white",
+            font_size=10,
+        )
     if not plotter.off_screen:
         plotter.show()
     else:
@@ -82,3 +93,27 @@ def append_feature(eigenfrequency, file_path, horizontal_lengths):
             delimiter="\t",
             fmt="%f",
         )
+
+
+def append_text(text, file_path):
+    """
+    Function to append meta data about the shape (resonance frequency & weights)
+    to features file
+    """
+    # Additionally save the parameters of the optimization in a .txt file
+    with open(file_path, "a") as csvfile:
+        csvfile.write("\n" + text)
+
+
+def generate_gif(folder_path, frequencies):
+    """
+    Generate a gif from the generated images
+    """
+    # Repeat last frame so that it is shown for a while
+    frequencies = np.append(frequencies, np.repeat(frequencies[-1], 15))
+
+    with imageio.get_writer(folder_path + "/time_laps.gif", mode="I") as writer:
+        for eigenfrequency in frequencies:
+            filename = folder_path + "/{0:.2f}.png".format(eigenfrequency)
+            image = imageio.imread(filename)
+            writer.append_data(image)
