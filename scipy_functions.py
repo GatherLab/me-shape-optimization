@@ -1,4 +1,4 @@
-from geometry_generator import generate_gmsh_mesh
+from geometry_generator import generate_gmsh_mesh, generate_gmsh_mesh_needle,generate_gmsh_mesh_more_crazy_needle
 from solver import unified_solving_function
 from visualisation import visualise_3D, append_feature
 
@@ -19,6 +19,7 @@ pyvista.start_xvfb()
 
 from scipy.optimize import (
     shgo,
+    basinhopping,
     differential_evolution,
     dual_annealing,
     direct,
@@ -38,18 +39,19 @@ gmsh.initialize()
 L, H, B = 12e-3, 0.2e-3, 3e-3
 
 Bmin = 1e-3
-Bmax = B
-grid_size = 0.5e-3
+Bmax = 3e-3
+grid_size = 12e-3
 
 # Select boundary conditions to apply
 bc_z = True
 bc_y = True
-no_eigenvalues = 20
+no_eigenvalues = 50
 target_frequency = 100e3
+optimization_target_frequency = 87.5e3
 
 # Set a folder to save the features
-folder = "./me-shape-optimization/results/shgo/"
-description = "SHGO optimization, scipy.optimize.shgo(opt_function, bounds), bcs on"
+folder = "./results/long-needle-width/"
+description = "function optimization where it can only take Bmin or Bmax. With grid size of 1 mm."
 
 os.makedirs(folder, exist_ok=True)
 
@@ -104,24 +106,42 @@ def opt_function(horizontal_lengths):
     """
     print("-------------- New Optimization step --------------")
     # before = psutil.Process(os.getpid()).memory_info().rss / 1024**2
-    # Change geometry
-    gmsh_mesh = generate_gmsh_mesh(model, L, H, B, horizontal_lengths)
+
+    # Render the problem discrete
+    # horizontal_lengths = [
+    #     Bmin if l < (Bmax - Bmin) * 0.5 + Bmin else Bmax for l in horizontal_lengths
+    # ]
+    horizontal_lengths = np.round(horizontal_lengths, 4)
+
+
+    try:
+        # gmsh_mesh = generate_gmsh_mesh(model, L, H, B, horizontal_lengths)
+        gmsh_mesh = generate_gmsh_mesh_more_crazy_needle(model, L, H, B, horizontal_lengths)
+                    
+    except:
+        print("Mesh generation failed!")
+        return 1e6
 
     # after = psutil.Process(os.getpid()).memory_info().rss / 1024**2
     # print("Mesh generation: " + str(after - before))
     # before = after
 
-    V, eigenvalues, eigenmodes, first_longitudinal_mode = unified_solving_function(
-        eigensolver,
-        gmsh_mesh,
-        L,
-        H,
-        B,
-        bc_z,
-        bc_y,
-        no_eigenvalues,
-        target_frequency,
-    )
+    try:
+        V, eigenvalues, eigenmodes, first_longitudinal_mode = unified_solving_function(
+            eigensolver,
+            gmsh_mesh,
+            L,
+            H,
+            B,
+            bc_z,
+            bc_y,
+            no_eigenvalues,
+            target_frequency,
+        )
+    except ValueError:
+        print("No longitudinal mode found for lengths!\n")
+        print("horizontal_lengths: " + str(horizontal_lengths))
+        return 1e6
 
     # after = psutil.Process(os.getpid()).memory_info().rss / 1024**2
     # print("Solving function: " + str(after - before))
@@ -131,6 +151,7 @@ def opt_function(horizontal_lengths):
     eigenfrequency = np.sqrt(eigenvalues[first_longitudinal_mode].real) / 2 / np.pi
 
     saving_path = folder + "{i:.2f}.png".format(i=eigenfrequency)
+    # print("Saving path: " + saving_path)
 
     # There might be still a tiny memory leakage stemming from the visualisation
     # part. However, this should be < 1MB/iteration
@@ -159,6 +180,8 @@ def opt_function(horizontal_lengths):
     # print("Append feature function: " + str(after - before))
     # before = after
 
+    # return 1/eigenfrequency * target_frequency
+    # return abs(eigenfrequency - optimization_target_frequency)
     return eigenfrequency
 
 
@@ -170,7 +193,11 @@ bounds = (
 ) * int(L / grid_size)
 
 
-final_results = shgo(opt_function, bounds)
+# geometry_width_list = np.random.uniform(Bmin, Bmax, int(L / grid_size))
+geometry_width_list = np.repeat(Bmax, int(L / grid_size))
+
+# Discrete search space
+final_results = dual_annealing(opt_function, x0=geometry_width_list, bounds=bounds)
 # while True:
 # horizontal_lengths = np.random.uniform(Bmin, Bmax, int(L / grid_size))
 # opt_function(horizontal_lengths)

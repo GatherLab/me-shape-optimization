@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 # from scipy.signal import argrelextrema
-from dolfinx import fem, plot
+from dolfinx import fem, plot,mesh, default_scalar_type
 import ufl
 
 from petsc4py import PETSc
@@ -26,6 +26,52 @@ def unified_solving_function(
     no_eigenvalues=25,
     target_frequency=100000,
 ):
+    """
+    # Two materials  
+    Q = fem.FunctionSpace(geometry_mesh, ("DG", 0))
+    metglas_threshold = 0.0 
+
+    # Define subdomains
+    def Omega_0(x):
+        # Metglas
+        return x[1] <= metglas_threshold 
+
+    def Omega_1(x):
+        # PZT
+        return x[1] >= metglas_threshold 
+    
+    mu = fem.Function(Q)
+    lambda_ = fem.Function(Q)
+
+    cells_0 = mesh.locate_entities(geometry_mesh, geometry_mesh.topology.dim, Omega_0)
+    cells_1 = mesh.locate_entities(geometry_mesh, geometry_mesh.topology.dim, Omega_1)
+
+    # PZT
+    E, nu = (5.4e10), (0.34)
+    rho = 7950.0
+    mu_pzt = E / 2.0 / (1 + nu)
+    lambda_pzt = E * nu / (1 + nu) / (1 - 2 * nu)
+
+    # Metglas
+    E, nu = (10e10), (0.3)
+    rho = 7180.0
+    mu_metglas = E / 2.0 / (1 + nu)
+    lambda_metglas = E * nu / (1 + nu) / (1 - 2 * nu)
+
+    mu.x.array[cells_0] = np.full_like(cells_0, mu_pzt, dtype=default_scalar_type)
+    mu.x.array[cells_1] = np.full_like(cells_1, mu_metglas, dtype=default_scalar_type)
+    # lambda_ = lambda_pzt
+
+    lambda_.x.array[cells_0] = np.full_like(cells_0, lambda_pzt, dtype=default_scalar_type)
+    lambda_.x.array[cells_1] = np.full_like(cells_1, lambda_metglas, dtype=default_scalar_type)
+    """
+
+    # PZT
+    E, nu = (5.4e10), (0.34)
+    rho = 7950.0
+    mu = E / 2.0 / (1 + nu)
+    lambda_ = E * nu / (1 + nu) / (1 - 2 * nu)
+
     # Define vector space from geometry mesh
     V = fem.VectorFunctionSpace(geometry_mesh, ("CG", 2))
 
@@ -35,7 +81,7 @@ def unified_solving_function(
     fdim = geometry_mesh.topology.dim - 1
 
     # Fixed z
-    space, map = V.sub(2).collapse()
+    space, map = V.sub(1).collapse()
     u_D1 = fem.Function(space)
 
     # Assign all the displacements along y to be zero
@@ -60,7 +106,7 @@ def unified_solving_function(
     with u_D2.vector.localForm() as loc:
         loc.set(0.0)
 
-    # Locate facets where y = 0 or y = H
+    # Locate facets where z = 0 or z = B
     locate_dofs2 = fem.locate_dofs_geometrical(
         (V.sub(2), space_2),
         lambda x: np.logical_or(np.isclose(x[2], 0), np.isclose(x[2], B)),
@@ -70,10 +116,7 @@ def unified_solving_function(
     bc2 = fem.dirichletbc(u_D2, locate_dofs2, V.sub(2))
 
     # Define actual problem
-    E, nu = (5.4e10), (0.34)
-    rho = 7950.0
-    mu = E / 2.0 / (1 + nu)
-    lambda_ = E * nu / (1 + nu) / (1 - 2 * nu)
+
 
     def epsilon(u):
         return 0.5 * (ufl.nabla_grad(u) + ufl.nabla_grad(u).T)
@@ -149,9 +192,13 @@ def unified_solving_function(
             eigenmodes.append(eigenmode)
 
     # If this is selected, only the first longitudinal mode is returned
-    first_longitudinal_eigenmode = determine_first_longitudinal_mode(
-        V, eigenmodes, eigenvalues, target_frequency
-    )
+    try:
+        first_longitudinal_eigenmode = determine_first_longitudinal_mode(
+            V, eigenmodes, eigenvalues, target_frequency
+        )
+    except ValueError:
+        raise ValueError("No longitudinal mode found.")
+
     """
     first_longitudinal_eigenmode = 1
     """
@@ -252,12 +299,15 @@ def determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequen
     # Now obtain the first longitudinal mode by selecting for symmetry and
     # minimum y displacement
     df_results = df_results.sort_values("eigenfrequency")
-    no_of_first_longitudinal_mode = df_results.loc[
-        np.logical_and(
-            df_results.symmetric == True,
-            df_results.eigenfrequency > target_frequency * 0.5,
-        )
-    ].index.to_numpy()[0]
+    try:
+        no_of_first_longitudinal_mode = df_results.loc[
+            np.logical_and(
+                df_results.symmetric == True,
+                np.logical_and(df_results.eigenfrequency <= target_frequency * 1.5, df_results.eigenfrequency >= target_frequency * 0.5),
+            )
+        ].index.to_numpy()[0]
+    except:
+        raise ValueError("No longitudinal mode found.")
     """
     try:
         no_of_first_longitudinal_mode = df_results.loc[
