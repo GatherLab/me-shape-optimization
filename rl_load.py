@@ -7,8 +7,8 @@ from gym_env import MEResonanceEnv
 # env = make_vec_env("CartPole-v1")
 env = MEResonanceEnv()
 
-models_dir = "./me-shape-optimization/reinforcement_learning/models/PPO-3"
-model_path = f"{models_dir}/50000"
+models_dir = "./me-shape-optimization/reinforcement_learning/models/PPO-24seg"
+model_path = f"{models_dir}/26000"
 model = PPO.load(model_path, env=env)
 
 episodes = 1

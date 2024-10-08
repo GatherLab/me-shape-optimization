@@ -24,7 +24,7 @@ model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=logdir)
 
 TIMESTEPS = 1000
 
-iters = 0
+i = 0
 while True:
     model.learn(
         total_timesteps=TIMESTEPS,
@@ -32,6 +32,7 @@ while True:
         tb_log_name="PPO-24seg-rew-freq",
     )
     model.save(f"{models_dir}/{TIMESTEPS*(i+1)}")
+    i += 1
 
 """
 model.learn(total_timesteps=10000)
