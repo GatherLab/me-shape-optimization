@@ -1,4 +1,10 @@
-from geometry_generator import generate_geometry, generate_gmsh_mesh
+from geometry_generator import (
+    generate_geometry,
+    generate_gmsh_mesh,
+    generate_gmsh_mesh_needle,
+    generate_gmsh_mesh_more_crazy_needle,
+    generate_gmsh_mesh_different_topologies,
+)
 from solver import unified_solving_function, determine_first_longitudinal_mode
 from visualisation import visualise_3D, visualise_mesh, generate_gif
 
@@ -34,7 +40,7 @@ grid_size = 0.5e-3
 bc_z = True
 bc_y = True
 
-no_eigenvalues = 20
+no_eigenvalues = 10
 target_frequency = 100e3
 
 ## Define eigensolver
@@ -65,37 +71,48 @@ model.setCurrent("Box")
 # Generate random numbers using numpy library with Bmax as a maximum and Bmin as
 # a minimum with L/grid_size entries
 # geometry_width_list = np.random.uniform(Bmin, Bmax, int(L / grid_size))
-geometry_width_list = [
-    0.002322,
-    0.001658,
-    0.002674,
-    0.002289,
-    0.002136,
-    0.002772,
-    0.002401,
-    0.001130,
-    0.002611,
-    0.001769,
-    0.001858,
-    0.002324,
-    0.001219,
-    0.001629,
-    0.001565,
-    0.001819,
-    0.001165,
-    0.001521,
-    0.002848,
-    0.002703,
-    0.002084,
-    0.002877,
-    0.001624,
-    0.001531,
-]
-# geometry_width_list = np.repeat(B, int(L / grid_size))
+
+# 0.5 mm grid optimization rectangular structure
+# geometry_width_list = [0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.001000,0.003000,0.001000,0.001000,0.001000,0.001000,0.001000,0.001000,0.001000,0.001000,0.003000,0.001000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000]
+# 1 mm grid optimization rectangular structure
+geometry_width_list = [0.005000,0.005000,0.005000,0.0004000,0.0004000,0.0004000,0.0004000,0.0004000,0.0004000,0.005000,0.005000,0.005000]
+
+# 80122 kHz
+# geometry_width_list = [0.001000,0.003000,0.003000,0.001000,0.001000,0.001000,0.001000,0.001000,0.001000,0.001000,0.003000,0.003000]
+# 87580
+# geometry_width_list = [0.001000,0.001000,0.001000,0.003000,0.003000,0.001000,0.001000,0.001000,0.001000,0.001000,0.003000,0.003000]
+# 95014
+# geometry_width_list = [0.001000,0.001000,0.001000,0.003000,0.003000,0.001000,0.001000,0.003000,0.003000,0.001000,0.001000,0.003000]
+# 102506
+# geometry_width_list = [0.001000,0.001000,0.001000,0.003000,0.003000,0.003000,0.003000,0.003000,0.001000,0.001000,0.003000,0.003000]
+# 110016
+# geometry_width_list = [0.001000,0.001000,0.001000,0.003000,0.003000,0.003000,0.001000,0.001000,0.003000,0.001000,0.001000,0.001000]
+# 117464
+# geometry_width_list = [0.003000,0.001000,0.001000,0.003000,0.003000,0.003000,0.003000,0.003000,0.001000,0.001000,0.001000,0.001000]
+# 124968
+# geometry_width_list = [0.001000,0.001000,0.001000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.001000,0.003000,0.001000]
+# 133896
+# geometry_width_list = [0.001000,0.001000,0.001000,0.001000,0.003000,0.003000,0.003000,0.003000,0.001000,0.001000,0.001000,0.001000]
+# 140682
+# geometry_width_list = [0.001000,0.001000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.001000,0.001000]
+# 144163
+# geometry_width_list = [0.001000,0.001000,0.001000,0.001000,0.001000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.001000,0.001000,0.001000,0.001000,0.001000]
+
+## Needle
+# 94814
+# geometry_width_list = [0.001000,0.001000,0.001000,0.001000,0.001000,0.001000,0.003000,0.001000,0.003000,0.003000,0.003000,0.003000]
+# 155709
+# geometry_width_list = [0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.003000,0.001000,0.001000,0.001000,0.001000]
+
+# Standard
+# geometry_width_list = np.repeat(B, int(L / grid_size)/2)
 
 # With gmsh model
 # No memory leak
-geometry_mesh = generate_gmsh_mesh(model, L, H, B, geometry_width_list)
+# geometry_mesh = generate_gmsh_mesh(model, L, H, B, geometry_width_list)
+# geometry_mesh = generate_gmsh_mesh_needle(model, L, H, B, geometry_width_list)
+geometry_mesh = generate_gmsh_mesh_more_crazy_needle(model, L, H, B, np.array([3e-3]))
+# geometry_mesh = generate_gmsh_mesh_different_topologies(model, L, H, B)
 
 """
 # With fenicsx mesh
@@ -118,10 +135,13 @@ V, eigenvalues, eigenmodes, first_longitudinal_mode = unified_solving_function(
 
 # Plot all eigenmodes
 for mode_no in range(np.size(eigenvalues)):
-    saving_path = "deflection{i}.png".format(i=mode_no)
-    visualise_3D(plotter, V, eigenvalues, eigenmodes, mode_no, saving_path)
+    freq_3D = np.sqrt(eigenvalues[mode_no].real) / 2 / np.pi
+    saving_path = "{i:.2f}Hz.png".format(i=freq_3D)
+    visualise_3D(
+        plotter, V, eigenvalues, eigenmodes, mode_no, saving_path, viewup=True, high_res=True
+    )
 
-determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequency)
+# determine_first_longitudinal_mode(V, eigenmodes, eigenvalues, target_frequency)
 """
 
 features = pd.read_csv(
@@ -132,13 +152,14 @@ features = pd.read_csv(
 )
 # Now reduce number of rows and only take every 100th row
 frequencies = np.append(
-    features.frequency.to_numpy()[::500], features.frequency.to_numpy()[-1]
+    features.frequency.to_numpy()[::1000], features.frequency.to_numpy()[-1]
 )
 
 generate_gif(
     "./me-shape-optimization/results/dual-annealing-3",
     frequencies,
 )
+
 """
 
 
