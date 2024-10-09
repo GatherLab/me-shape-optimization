@@ -1,20 +1,13 @@
 from geometry_generator import (
-    generate_geometry,
     generate_gmsh_mesh,
     generate_gmsh_mesh_needle,
     generate_gmsh_mesh_more_crazy_needle,
-    generate_gmsh_mesh_different_topologies,
 )
-from solver import unified_solving_function, determine_first_longitudinal_mode
+from solver import unified_solving_function
 from visualisation import visualise_3D, visualise_mesh, generate_gif
-
-from dolfinx.io.gmshio import model_to_mesh
 
 import sys
 import numpy as np
-import pandas as pd
-import psutil
-import os
 
 from mpi4py import MPI
 from slepc4py import SLEPc
