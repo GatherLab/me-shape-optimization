@@ -8,14 +8,32 @@
    <a href="./LICENSE" title="License"><img src="https://img.shields.io/github/license/GatherLab/me-shape-optimization"></a>
 </p>
 
+Software for the simulation of oscillation modes of arbitrary structures using
+the finite element method solver of dolfinx. The software solves the equations
+of linear elasticity and allows for simple plotting functionalities. 
+
 <p align="center">
-  <a href="#setup">Setup</a> •
-  <a href="#optimization">Optimization</a> •
-  <a href="#development">Development</a>
+  <img src="./examples/bending-mode.png" alt="Image 1" width="30%" style="display: inline-block; margin: 0 10px;">
+  <img src="./examples/twisting-mode.png" alt="Image 2" width="30%" style="display: inline-block; margin: 0 10px;">
+  <img src="./examples/first-longitudinal-mode.png" alt="Image 3" width="30%" style="display: inline-block; margin: 0 10px;">
 </p>
 
-Software for the simulation and optimization of the resonance frequency of the
-first longitudinal mode of a thin structure.
+Automatically identify the first longitudinal resonance mode for magnetoelectric
+laminate applications.
+
+<p align="center">
+  <img src="./examples/first-longitudinal-bar-shape.png" alt="Image 1" width="30%" style="display: inline-block; margin: 0 10px;">
+  <img src="./examples/needle-shape-first-longitudinal.png" alt="Image 2" width="30%" style="display: inline-block; margin: 0 10px;">
+</p>
+
+Through various state of the art optimization algorithms,
+optimize the shape for a specific resonance frequency, minimum or maximum
+resonance frequency.
+
+<p align="center">
+  <img src="./examples/time_laps.gif" alt="Animation" width="60%" style="display: inline-block; margin: 0 10px;">
+</p>
+
 
 ## Setup
 1. Install latest dolfinx image (tested under dolfinx:nightly, v.??)
@@ -45,4 +63,3 @@ python3 example.py
 ```
 
 ## Optimization
-## Development
