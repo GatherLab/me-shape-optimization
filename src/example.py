@@ -32,11 +32,11 @@ L, H, B = 12e-3, 0.2e-3, 3e-3
 Bmin = 1e-3
 Bmax = B
 grid_size = 0.5e-3
-bc_z = False
-bc_y = False
+bc_z = True
+bc_y = True
 
 # Number of eigenvalues to compute and target frequency
-no_eigenvalues = 20
+no_eigenvalues = 10
 target_frequency = 100e3
 
 # Define eigensolver
@@ -80,10 +80,6 @@ geometry_mesh = generate_gmsh_mesh(model, L, H, B, geometry_width_list)
 V, eigenvalues, eigenmodes, first_longitudinal_mode = unified_solving_function(
     eigensolver, geometry_mesh, L, H, B, bc_z, bc_y, no_eigenvalues
 )
-# Print dolfinx version
-import dolfinx
-
-print(dolfinx.__version__)
 
 # Plot all eigenmodes
 for mode_no in range(np.size(eigenvalues)):
@@ -96,6 +92,6 @@ for mode_no in range(np.size(eigenvalues)):
         eigenmodes,
         mode_no,
         saving_path,
-        viewup=False,
+        viewup=True,
         high_res=True,
     )
